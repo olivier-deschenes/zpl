@@ -1,5 +1,5 @@
 {
-  "projectName": "statement-analyser",
+  "projectName": "zpl-editor",
   "mode": "file-router",
   "typescript": true,
   "packageManager": "bun",

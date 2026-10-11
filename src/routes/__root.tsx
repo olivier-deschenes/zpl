@@ -8,6 +8,10 @@ import { TanStackDevtools } from '@tanstack/react-devtools'
 
 import TanStackQueryDevtools from '../integrations/tanstack-query/devtools'
 
+import { Toaster } from '#/components/ui/sonner'
+import { TooltipProvider } from '#/components/ui/tooltip'
+import { m } from '#/paraglide/messages'
+
 import { getLocale } from '#/paraglide/runtime'
 
 import appCss from '../styles.css?url'
@@ -37,7 +41,11 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'TanStack Start Starter',
+        title: m.app_title(),
+      },
+      {
+        name: 'description',
+        content: m.app_description(),
       },
     ],
     links: [
@@ -57,7 +65,14 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        {children}
+        <a
+          href="#editor"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:ring-2 focus:ring-ring"
+        >
+          {m.skip_to_editor()}
+        </a>
+        <TooltipProvider>{children}</TooltipProvider>
+        <Toaster position="bottom-left" />
         <TanStackDevtools
           config={{
             position: 'bottom-right',
