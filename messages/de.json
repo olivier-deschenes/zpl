@@ -38,7 +38,7 @@
   "copy_failed": "Kopieren in die Zwischenablage fehlgeschlagen",
   "decoded_base64": "Base64-Eingabe dekodiert",
   "undo": "Rückgängig",
-  "region_label": "{type}-Feld, Quelltext-Position {offset}",
+  "region_label": "{type} in Zeile {line}",
   "command_supported": "Unterstützt",
   "command_partial": "Teilweise unterstützt",
   "command_non_rendering": "Druckereinstellung, wird nicht gezeichnet",

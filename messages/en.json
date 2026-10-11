@@ -38,7 +38,7 @@
   "copy_failed": "Couldn't copy to the clipboard",
   "decoded_base64": "Decoded base64 input",
   "undo": "Undo",
-  "region_label": "{type} field, source offset {offset}",
+  "region_label": "{type} on line {line}",
   "command_supported": "Supported",
   "command_partial": "Partially supported",
   "command_non_rendering": "Printer setting, not drawn",

@@ -43,17 +43,24 @@ export function dpiFor(dpmm: PrintDensity): number {
   )
 }
 
+/**
+ * Uses the printer's nominal dpi (203, 300, …) rather than dpmm × 25.4, the
+ * way label sizes are specified: 812 × 1218 dots at 203 dpi is 4 × 6 in.
+ */
 export function dotsToInches(dots: number, dpmm: PrintDensity): number {
-  return dots / dpmm / MM_PER_INCH
+  return dots / dpiFor(dpmm)
 }
 
 export function toRenderOptions(settings: LabelSettings): RenderJobOptions {
+  // Convert at the nominal dpi so a 4 × 6 in label is 812 × 1218 dots,
+  // matching what ^PW/^LL would say, rather than zplr's 813 × 1219.
+  const dpi = dpiFor(settings.dpmm)
   return {
     printDensity: settings.dpmm,
     fallbackSize: {
-      width: settings.widthIn,
-      height: settings.heightIn,
-      unit: 'in',
+      width: Math.round(settings.widthIn * dpi),
+      height: Math.round(settings.heightIn * dpi),
+      unit: 'dots',
     },
     limits: { maxLabels: 50 },
   }

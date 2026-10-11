@@ -35,6 +35,8 @@
   /* State colour for "this element is selected" in the editor and preview. */
   --selection: oklch(0.55 0.2 260);
   --selection-soft: oklch(0.55 0.2 260 / 14%);
+  /* Field data (^FD) in the editor, so it stands apart from commands. */
+  --syntax-data: oklch(0.48 0.12 150);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -75,6 +77,7 @@
     --ring: oklch(0.556 0 0);
     --selection: oklch(0.72 0.15 260);
     --selection-soft: oklch(0.72 0.15 260 / 22%);
+    --syntax-data: oklch(0.8 0.13 150);
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);

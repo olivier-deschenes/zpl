@@ -1,0 +1,236 @@
+import { useId } from 'react'
+import { IconAdjustmentsHorizontal, IconChevronDown } from '@tabler/icons-react'
+import { useForm } from '@tanstack/react-form'
+import { toast } from 'sonner'
+import { z } from 'zod'
+
+import { Button } from '#/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '#/components/ui/dropdown-menu'
+import { Input } from '#/components/ui/input'
+import { Label } from '#/components/ui/label'
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from '#/components/ui/popover'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '#/components/ui/select'
+import { copyBase64, copyZpl, exportPdf, exportPng } from '#/lib/zpl/export'
+import { DENSITIES, MAX_SIZE_IN, MIN_SIZE_IN } from '#/lib/zpl/render'
+import type { PrintDensity } from '#/lib/zpl/render'
+import { m } from '#/paraglide/messages'
+import { editorStore, setSettings } from './store'
+
+export function Toolbar() {
+  return (
+    <div className="flex items-center gap-2">
+      <SettingsPopover />
+      <ExportMenu />
+    </div>
+  )
+}
+
+function SettingsPopover() {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline">
+          <IconAdjustmentsHorizontal data-icon="inline-start" />
+          {m.settings()}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72">
+        <PopoverHeader>
+          <PopoverTitle>{m.settings()}</PopoverTitle>
+          <PopoverDescription>{m.settings_hint()}</PopoverDescription>
+        </PopoverHeader>
+        <SettingsForm />
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+const sizeSchema = z
+  .string()
+  .trim()
+  .transform(Number)
+  .pipe(
+    z
+      .number({ error: m.invalid_size() })
+      .min(MIN_SIZE_IN, m.invalid_size())
+      .max(MAX_SIZE_IN, m.invalid_size()),
+  )
+
+const settingsSchema = z.object({
+  dpmm: z
+    .enum(DENSITIES.map(({ dpmm }) => String(dpmm)))
+    .transform((value) => Number(value) as PrintDensity),
+  widthIn: sizeSchema,
+  heightIn: sizeSchema,
+})
+
+/** Applies every valid change straight away; invalid input stays visible until fixed. */
+function SettingsForm() {
+  const id = useId()
+  const { settings } = editorStore.state
+
+  const form = useForm({
+    defaultValues: {
+      dpmm: String(settings.dpmm),
+      widthIn: String(settings.widthIn),
+      heightIn: String(settings.heightIn),
+    },
+    listeners: {
+      onChange: ({ formApi }) => {
+        const parsed = settingsSchema.safeParse(formApi.state.values)
+        if (parsed.success) setSettings(parsed.data)
+      },
+    },
+  })
+
+  return (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(event) => event.preventDefault()}
+    >
+      <form.Field name="dpmm">
+        {(field) => (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor={`${id}-dpmm`}>{m.density()}</Label>
+            <Select
+              value={field.state.value}
+              onValueChange={field.handleChange}
+            >
+              <SelectTrigger id={`${id}-dpmm`} className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DENSITIES.map(({ dpmm, dpi }) => (
+                  <SelectItem key={dpmm} value={String(dpmm)}>
+                    {dpi} dpi ({dpmm} dpmm)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </form.Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        {(['widthIn', 'heightIn'] as const).map((name) => (
+          <form.Field
+            key={name}
+            name={name}
+            validators={{ onChange: sizeSchema }}
+          >
+            {(field) => {
+              const error = field.state.meta.errors.at(0)?.message
+              const inputId = `${id}-${name}`
+              return (
+                <div className="flex min-w-0 flex-col gap-2">
+                  <Label htmlFor={inputId}>
+                    {name === 'widthIn' ? m.width_in() : m.height_in()}
+                  </Label>
+                  <Input
+                    id={inputId}
+                    type="number"
+                    inputMode="decimal"
+                    step="0.25"
+                    min={MIN_SIZE_IN}
+                    max={MAX_SIZE_IN}
+                    value={field.state.value}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                    onBlur={field.handleBlur}
+                    aria-invalid={error ? true : undefined}
+                    aria-describedby={error ? `${inputId}-error` : undefined}
+                    className="tabular-nums"
+                  />
+                  {error && (
+                    <p
+                      id={`${inputId}-error`}
+                      className="text-xs text-destructive"
+                    >
+                      {error}
+                    </p>
+                  )}
+                </div>
+              )
+            }}
+          </form.Field>
+        ))}
+      </div>
+    </form>
+  )
+}
+
+function ExportMenu() {
+  // Exports read the live source, not the debounced one the preview shows.
+  const download = async (exporter: typeof exportPng, done: string) => {
+    const { source, settings } = editorStore.state
+    try {
+      await exporter(source, settings)
+      toast.success(done)
+    } catch (error) {
+      toast.error(
+        m.export_failed({
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      )
+    }
+  }
+
+  const copy = async (copier: typeof copyZpl, done: string) => {
+    try {
+      await copier(editorStore.state.source)
+      toast.success(done)
+    } catch {
+      toast.error(m.copy_failed())
+    }
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button>
+          {m.export()}
+          <IconChevronDown data-icon="inline-end" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuItem
+          onSelect={() => void download(exportPng, m.exported_png())}
+        >
+          {m.export_png()}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={() => void download(exportPdf, m.exported_pdf())}
+        >
+          {m.export_pdf()}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => void copy(copyZpl, m.copied_zpl())}>
+          {m.copy_zpl()}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={() => void copy(copyBase64, m.copied_base64())}
+        >
+          {m.copy_base64()}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}

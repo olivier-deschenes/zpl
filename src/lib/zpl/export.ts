@@ -45,11 +45,35 @@ export async function exportPdf(source: string, settings: LabelSettings) {
 }
 
 export function copyZpl(source: string) {
-  return navigator.clipboard.writeText(source)
+  return writeClipboard(source)
 }
 
 export function copyBase64(source: string) {
-  return navigator.clipboard.writeText(encodeBase64(source))
+  return writeClipboard(encodeBase64(source))
+}
+
+async function writeClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch (error) {
+    // Some embedded browsers deny the async clipboard API outright.
+    if (!legacyCopy(text)) throw error
+  }
+}
+
+function legacyCopy(text: string): boolean {
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.readOnly = true
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.append(textarea)
+  textarea.select()
+  try {
+    return document.execCommand('copy')
+  } finally {
+    textarea.remove()
+  }
 }
 
 export function downloadBlob(blob: Blob, filename: string) {

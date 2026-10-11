@@ -1,4 +1,12 @@
-Welcome to your new TanStack Start app!
+# ZPL editor
+
+A browser-based editor for Zebra ZPL labels:
+
+- Live preview that re-renders 300 ms after you stop typing, rendered locally by [zplr](https://github.com/le2ni/zplr). Labels never leave the browser.
+- Click anything on the label to jump to and highlight its code; move the cursor in the code to outline the matching element.
+- Pasted or dropped base64 is detected and decoded automatically (Undo keeps the raw base64).
+- Export to PNG (a zip for multi-label jobs) or PDF at the real label size, or copy as ZPL or base64.
+- Label size and print density fall back to the settings when the ZPL has no `^PW` / `^LL`.
 
 # Getting Started
 
@@ -6,15 +14,20 @@ To run this application:
 
 ```bash
 bun install
-bun --bun run dev
+bun run dev
 ```
+
+Run Vite under Node (`bun run`, not `bun --bun run`): the Cloudflare
+plugin's Miniflare dev server crashes on the Bun runtime.
+
+Run the unit tests with `bun run test`.
 
 # Building For Production
 
 To build this application for production:
 
 ```bash
-bun --bun run build
+bun run build
 ```
 
 ## Styling
