@@ -77,7 +77,5 @@
   "command_partial": "Partially supported",
   "command_non_rendering": "Printer setting, not drawn",
   "command_unsupported": "Not supported by the preview",
-  "command_unknown": "Unknown command",
-  "language_label": "Language",
-  "current_locale": "Current locale: {locale}"
+  "command_unknown": "Unknown command"
 }
