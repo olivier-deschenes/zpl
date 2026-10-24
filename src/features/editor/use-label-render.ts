@@ -3,8 +3,8 @@ import { useDebouncedValue } from '@tanstack/react-pacer'
 import { keepPreviousData, queryOptions, useQuery } from '@tanstack/react-query'
 import { useSelector } from '@tanstack/react-store'
 
-import { DEFAULT_SETTINGS, renderLabels } from '#/lib/zpl/render'
-import type { LabelSettings, RenderJobResult } from '#/lib/zpl/render'
+import { DEFAULT_SETTINGS, readZplSize, renderLabels } from '#/lib/zpl/render'
+import type { LabelSettings, RenderJobResult, ZplSize } from '#/lib/zpl/render'
 import { editorStore, selectPanel } from './store'
 
 const RENDER_DELAY_MS = 300
@@ -13,16 +13,21 @@ export interface LabelRender {
   /** The exact source this result was rendered from. */
   source: string
   result: RenderJobResult<HTMLCanvasElement>
+  /** What the source's ^PW / ^LL ask for, which the settings override. */
+  zplSize: ZplSize
 }
 
 /** Panels showing the same label at the same settings share one render. */
 function labelRenderQuery(source: string, settings: LabelSettings) {
   return queryOptions({
     queryKey: ['zpl-render', source, settings],
-    queryFn: async (): Promise<LabelRender> => ({
-      source,
-      result: await renderLabels(source, settings),
-    }),
+    queryFn: async (): Promise<LabelRender> => {
+      const [result, zplSize] = await Promise.all([
+        renderLabels(source, settings),
+        readZplSize(source, settings.dpmm),
+      ])
+      return { source, result, zplSize }
+    },
     staleTime: Infinity,
     gcTime: 30_000,
     retry: false,

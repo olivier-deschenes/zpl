@@ -61,6 +61,8 @@
   "diff_summary": "{percent} of inked dots differ",
   "settings": "Label settings",
   "settings_hint": "The label to render on, whatever ^PW or ^LL say.",
+  "zpl_size_differs": "ZPL sets {width} × {height} in",
+  "use_zpl_size": "Render at the size from ^PW and ^LL",
   "density": "Print density",
   "width_in": "Width (in)",
   "height_in": "Height (in)",

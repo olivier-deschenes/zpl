@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, MouseEvent } from 'react'
 import {
+  IconAlertTriangle,
   IconApi,
   IconBolt,
   IconChevronDown,
@@ -32,8 +33,19 @@ import {
 import { useElementSize } from '#/hooks/use-element-size'
 import { DIFF_COLORS, diffInk, rgb } from '#/lib/zpl/diff'
 import { LabelaryError } from '#/lib/zpl/labelary'
-import { DEFAULT_SETTINGS, dotsToInches, dpiFor } from '#/lib/zpl/render'
-import type { HighlightRegion, RenderedLabel } from '#/lib/zpl/render'
+import {
+  DEFAULT_SETTINGS,
+  MAX_SIZE_IN,
+  MIN_SIZE_IN,
+  dotsToInches,
+  dpiFor,
+} from '#/lib/zpl/render'
+import type {
+  HighlightRegion,
+  LabelSettings,
+  RenderedLabel,
+  ZplSize,
+} from '#/lib/zpl/render'
 import { m } from '#/paraglide/messages'
 import { getLocale } from '#/paraglide/runtime'
 import { lineAt, lineStarts, uniqueDiagnostics } from './diagnostics'
@@ -43,6 +55,7 @@ import {
   selectPanel,
   setPreviewSource,
   setSelection,
+  setSettings,
 } from './store'
 import type { PreviewSource, SourceSelection } from './store'
 import { useOtherPanelRender } from './use-label-render'
@@ -1014,6 +1027,8 @@ function StatusLine({
         height: settings.heightIn,
         dpi: dpiFor(settings.dpmm),
       })
+  const zplSize =
+    render && first ? zplSizeSettings(render.zplSize, first) : null
 
   return (
     <div className="flex min-h-8 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t py-1 pr-1.5 pl-1.5 text-xs text-muted-foreground tabular-nums">
@@ -1023,6 +1038,25 @@ function StatusLine({
           <IconChevronDown data-icon="inline-end" />
         </Button>
       </SettingsPopover>
+      {zplSize && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="xs"
+              className="text-warning hover:text-warning"
+              onClick={() => setSettings(panelId, zplSize)}
+            >
+              <IconAlertTriangle data-icon="inline-start" />
+              {m.zpl_size_differs({
+                width: zplSize.widthIn,
+                height: zplSize.heightIn,
+              })}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{m.use_zpl_size()}</TooltipContent>
+        </Tooltip>
+      )}
       <div
         role="status"
         aria-live="polite"
@@ -1160,4 +1194,27 @@ function findSelectedRegion(
 
 function formatInches(dots: number, dpmm: Label['printDensity']) {
   return Number(dotsToInches(dots, dpmm).toFixed(2))
+}
+
+/**
+ * The settings that would render `label` at the size its ^PW / ^LL ask for,
+ * or null when it already is. A side the ZPL leaves out keeps its size.
+ */
+function zplSizeSettings(
+  zplSize: ZplSize,
+  label: Label,
+): Pick<LabelSettings, 'widthIn' | 'heightIn'> | null {
+  const width = zplSize.width ?? label.width
+  const height = zplSize.height ?? label.height
+  if (width === label.width && height === label.height) return null
+  // Three decimals round back to the same dots even at 600 dpi.
+  const inches = (dots: number) =>
+    Math.min(
+      Math.max(
+        Number(dotsToInches(dots, label.printDensity).toFixed(3)),
+        MIN_SIZE_IN,
+      ),
+      MAX_SIZE_IN,
+    )
+  return { widthIn: inches(width), heightIn: inches(height) }
 }
