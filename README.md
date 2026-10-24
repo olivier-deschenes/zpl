@@ -2,7 +2,8 @@
 
 A browser-based editor for Zebra ZPL labels:
 
-- Live preview that re-renders 300 ms after you stop typing, rendered locally by [zplr](https://github.com/le2ni/zplr). Labels never leave the browser.
+- Live preview that re-renders 300 ms after you stop typing, rendered locally by [zplr](https://github.com/le2ni/zplr). Labels never leave the browser unless you turn on the Labelary comparison.
+- Optional comparison with [Labelary](https://labelary.com/viewer.html), side by side or as a colour-coded difference overlay, to spot where the local render differs. It sends the ZPL to Labelary's public API, spaced to stay under its rate limit of 3 requests a second.
 - Click anything on the label to jump to and highlight its code; move the cursor in the code to outline the matching element.
 - Pasted or dropped base64 is detected and decoded automatically (Undo keeps the raw base64).
 - Export to PNG (a zip for multi-label jobs) or PDF at the real label size, or copy as ZPL or base64.

@@ -2,31 +2,44 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, MouseEvent } from 'react'
 import {
   IconArrowsHorizontal,
+  IconGitCompare,
   IconZoomIn,
   IconZoomOut,
 } from '@tabler/icons-react'
 import { useSelector } from '@tanstack/react-store'
+import { cn } from 'cn'
 import { findHighlightRegionAtPoint } from 'zplr/web'
 
 import { Button } from '#/components/ui/button'
+import { Separator } from '#/components/ui/separator'
+import { ToggleGroup, ToggleGroupItem } from '#/components/ui/toggle-group'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '#/components/ui/tooltip'
 import { useElementWidth } from '#/hooks/use-element-width'
+import { DIFF_COLORS, diffInk, rgb } from '#/lib/zpl/diff'
+import { LabelaryError } from '#/lib/zpl/labelary'
+import type { LabelaryLabel } from '#/lib/zpl/labelary'
 import { DEFAULT_SETTINGS, dotsToInches, dpiFor } from '#/lib/zpl/render'
 import type { HighlightRegion, RenderedLabel } from '#/lib/zpl/render'
 import { m } from '#/paraglide/messages'
+import { getLocale } from '#/paraglide/runtime'
 import { lineAt, lineStarts, uniqueDiagnostics } from './diagnostics'
 import { editorStore, selectPanel, setSelection } from './store'
 import type { SourceSelection } from './store'
 import type { LabelRender } from './use-label-render'
+import { useLabelaryRender } from './use-labelary-render'
 
 const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4]
 const VIEWPORT_PADDING = 24
+/** Between the two renders when comparing side by side. */
+const PAIR_GAP = 16
 
 type Label = RenderedLabel<HTMLCanvasElement>
+type CompareMode = 'side-by-side' | 'difference'
+type Comparison = ReturnType<typeof useLabelaryRender>
 
 interface LabelPreviewProps {
   panelId: string
@@ -48,16 +61,35 @@ export function LabelPreview({
   )
   const [zoom, setZoom] = useState<number | 'fit'>('fit')
   const [viewportRef, viewportWidth] = useElementWidth<HTMLDivElement>()
+  // Off on every load: comparing sends the ZPL to labelary.com.
+  const [compare, setCompare] = useState(false)
+  const [compareMode, setCompareMode] = useState<CompareMode>('side-by-side')
+  const comparison = useLabelaryRender(render, compare)
+  const { labelary } = comparison
+  const mode = compare ? compareMode : null
 
-  const labels = render?.result.labels ?? []
+  // The difference view keeps to the local render Labelary's labels were
+  // fetched for, so the two always line up while a newer one is on its way.
+  const shown = mode === 'difference' && labelary ? labelary.local : render
+  const labels = shown?.result.labels ?? []
   const widest = Math.max(1, ...labels.map((label) => label.width))
+  const columns = mode === 'side-by-side' ? 2 : 1
   // With nothing to fit, a new empty panel would read "Zoom 60000%".
   const fitScale =
     labels.length === 0
       ? 1
-      : Math.max(ZOOM_STEPS[0], (viewportWidth - VIEWPORT_PADDING * 2) / widest)
+      : Math.max(
+          ZOOM_STEPS[0],
+          (viewportWidth - VIEWPORT_PADDING * 2 - PAIR_GAP * (columns - 1)) /
+            (widest * columns),
+        )
   const scale = zoom === 'fit' ? fitScale : zoom
-  const starts = useMemo(() => lineStarts(render?.source ?? ''), [render])
+  const starts = useMemo(() => lineStarts(shown?.source ?? ''), [shown])
+  const remotePlaceholder = labelary
+    ? m.compare_no_label()
+    : comparison.error
+      ? m.compare_unavailable()
+      : m.compare_loading()
 
   const zoomIn = () =>
     setZoom(ZOOM_STEPS.find((step) => step > scale * 1.01) ?? scale)
@@ -77,21 +109,31 @@ export function LabelPreview({
           <span className="mr-1 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
             {m.zoom_level({ percent: Math.round(scale * 100) })}
           </span>
-          <ZoomButton label={m.zoom_out()} onClick={zoomOut}>
+          <HeaderButton label={m.zoom_out()} onClick={zoomOut}>
             <IconZoomOut />
-          </ZoomButton>
-          <ZoomButton label={m.zoom_in()} onClick={zoomIn}>
+          </HeaderButton>
+          <HeaderButton label={m.zoom_in()} onClick={zoomIn}>
             <IconZoomIn />
-          </ZoomButton>
-          <ZoomButton
+          </HeaderButton>
+          <HeaderButton
             label={m.zoom_fit()}
             onClick={() => setZoom('fit')}
             pressed={zoom === 'fit'}
           >
             <IconArrowsHorizontal />
-          </ZoomButton>
+          </HeaderButton>
+          <Separator orientation="vertical" className="mx-1 h-4" />
+          <HeaderButton
+            label={m.compare_labelary()}
+            onClick={() => setCompare(!compare)}
+            pressed={compare}
+          >
+            <IconGitCompare />
+          </HeaderButton>
         </div>
       </div>
+
+      {mode && <CompareBar mode={mode} onModeChange={setCompareMode} />}
 
       <div
         ref={viewportRef}
@@ -112,12 +154,18 @@ export function LabelPreview({
             style={{ padding: VIEWPORT_PADDING }}
           >
             {labels.map((label, index) => (
-              <LabelView
+              <LabelFigure
                 key={index}
+                mode={mode}
+                caption={m.label_caption({
+                  index: index + 1,
+                  count: labels.length,
+                })}
+                remote={labelary?.labels[index]}
+                remoteStale={comparison.isStale}
+                remotePlaceholder={remotePlaceholder}
                 panelId={panelId}
                 label={label}
-                index={index}
-                count={labels.length}
                 scale={scale}
                 selection={selection}
                 lineStarts={starts}
@@ -132,44 +180,255 @@ export function LabelPreview({
         render={render}
         isRendering={isRendering}
         error={error}
+        comparison={compare ? comparison : undefined}
       />
     </section>
   )
 }
 
-interface LabelViewProps {
+function CompareBar({
+  mode,
+  onModeChange,
+}: {
+  mode: CompareMode
+  onModeChange: (mode: CompareMode) => void
+}) {
+  return (
+    <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b px-3 py-2">
+      <ToggleGroup
+        type="single"
+        variant="outline"
+        size="sm"
+        spacing={0}
+        value={mode}
+        // Radix reports an empty value when the pressed item is pressed again.
+        onValueChange={(value) => {
+          if (value) onModeChange(value as CompareMode)
+        }}
+        aria-label={m.compare_view()}
+      >
+        <ToggleGroupItem value="side-by-side">
+          {m.compare_side_by_side()}
+        </ToggleGroupItem>
+        <ToggleGroupItem value="difference">
+          {m.compare_difference()}
+        </ToggleGroupItem>
+      </ToggleGroup>
+      {mode === 'difference' ? (
+        <DiffLegend />
+      ) : (
+        <p className="text-xs text-muted-foreground">{m.compare_notice()}</p>
+      )}
+    </div>
+  )
+}
+
+function DiffLegend() {
+  const entries = [
+    [DIFF_COLORS.both, m.diff_both()],
+    [DIFF_COLORS.onlyA, m.diff_only_editor()],
+    [DIFF_COLORS.onlyB, m.diff_only_labelary()],
+  ] as const
+
+  return (
+    <ul
+      aria-label={m.diff_legend()}
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
+    >
+      {entries.map(([color, label]) => (
+        <li key={label} className="flex items-center gap-1.5">
+          <span
+            aria-hidden
+            className="size-2.5 shrink-0 ring-1 ring-border"
+            style={{ backgroundColor: rgb(color) }}
+          />
+          {label}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+interface LabelFigureProps extends LabelSurfaceProps {
+  mode: CompareMode | null
+  caption: string
+  remote: LabelaryLabel | undefined
+  /** The Labelary label is for older source and is being replaced. */
+  remoteStale: boolean
+  /** Shown in place of a missing Labelary label. */
+  remotePlaceholder: string
+}
+
+function LabelFigure({
+  mode,
+  caption,
+  remote,
+  remoteStale,
+  remotePlaceholder,
+  ...surface
+}: LabelFigureProps) {
+  if (mode === 'difference' && remote) {
+    return (
+      <DiffFigure
+        caption={caption}
+        remote={remote}
+        stale={remoteStale}
+        {...surface}
+      />
+    )
+  }
+
+  const { label, scale } = surface
+  return (
+    <figure className="flex flex-col items-center gap-2">
+      {mode === 'side-by-side' ? (
+        <div className="flex items-start" style={{ gap: PAIR_GAP }}>
+          <RenderColumn title={m.compare_editor()}>
+            <LabelSurface {...surface} />
+          </RenderColumn>
+          <RenderColumn title={m.compare_labelary_title()}>
+            {remote ? (
+              <RasterSurface
+                image={remote.canvas}
+                width={remote.width}
+                height={remote.height}
+                scale={scale}
+                className={cn(
+                  'transition-opacity',
+                  remoteStale && 'opacity-50',
+                )}
+              />
+            ) : (
+              <div
+                className="flex items-center justify-center border border-dashed p-4 text-center text-xs text-muted-foreground"
+                style={{
+                  width: label.width * scale,
+                  height: label.height * scale,
+                }}
+              >
+                {remotePlaceholder}
+              </div>
+            )}
+          </RenderColumn>
+        </div>
+      ) : (
+        <LabelSurface {...surface} />
+      )}
+      <figcaption className="text-xs text-muted-foreground">
+        {mode === 'difference' ? `${caption} · ${remotePlaceholder}` : caption}
+      </figcaption>
+    </figure>
+  )
+}
+
+function DiffFigure({
+  caption,
+  remote,
+  stale,
+  ...surface
+}: LabelSurfaceProps & {
+  caption: string
+  remote: LabelaryLabel
+  stale: boolean
+}) {
+  const local = surface.label.canvas
+  const diff = useMemo(() => drawInkDiff(local, remote.canvas), [local, remote])
+  const summary =
+    diff.differing === 0
+      ? m.diff_identical()
+      : m.diff_summary({ percent: formatPercent(diff.differing / diff.inked) })
+
+  return (
+    <figure className="flex flex-col items-center gap-2">
+      <LabelSurface
+        {...surface}
+        image={diff.canvas}
+        className={cn('transition-opacity', stale && 'opacity-50')}
+      />
+      <figcaption className="text-xs text-muted-foreground">
+        {caption} · {summary}
+      </figcaption>
+    </figure>
+  )
+}
+
+function RenderColumn({
+  title,
+  children,
+}: {
+  title: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <span className="text-xs font-medium text-muted-foreground">{title}</span>
+      {children}
+    </div>
+  )
+}
+
+/** A plain label image with nothing to click. */
+function RasterSurface({
+  image,
+  width,
+  height,
+  scale,
+  className,
+}: {
+  image: HTMLCanvasElement
+  width: number
+  height: number
+  scale: number
+  className?: string
+}) {
+  const canvasRef = useCanvasCopy(image)
+  return (
+    <div
+      className={cn(
+        'relative bg-white shadow-sm ring-1 ring-border',
+        className,
+      )}
+      style={{ width: width * scale, height: height * scale }}
+    >
+      <canvas
+        ref={canvasRef}
+        width={width}
+        height={height}
+        aria-hidden
+        className="absolute inset-0 size-full"
+        style={{ imageRendering: scale > 1 ? 'pixelated' : 'auto' }}
+      />
+    </div>
+  )
+}
+
+interface LabelSurfaceProps {
   panelId: string
   label: Label
-  index: number
-  count: number
+  /** Drawn in place of the label's own canvas, at the same size. */
+  image?: HTMLCanvasElement
   scale: number
   selection: SourceSelection | null
   lineStarts: number[]
+  className?: string
 }
 
-function LabelView({
+function LabelSurface({
   panelId,
   label,
-  index,
-  count,
+  image,
   scale,
   selection,
   lineStarts: starts,
-}: LabelViewProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+  className,
+}: LabelSurfaceProps) {
+  const canvasRef = useCanvasCopy(image ?? label.canvas)
   const selectedRef = useRef<SVGGElement>(null)
   const [hovered, setHovered] = useState<HighlightRegion>()
 
   const regions = label.highlightRegions
   const focusable = regions.filter(hasArea)
   const selected = findSelectedRegion(regions, selection)
-
-  useEffect(() => {
-    const context = canvasRef.current?.getContext('2d')
-    if (!context) return
-    context.clearRect(0, 0, label.width, label.height)
-    context.drawImage(label.canvas, 0, 0)
-  }, [label])
 
   // Moving the cursor in the editor brings the matching field into view.
   useEffect(() => {
@@ -212,70 +471,106 @@ function LabelView({
   }
 
   return (
-    <figure className="flex flex-col items-center gap-2">
-      <div
-        className="relative bg-white shadow-sm ring-1 ring-border"
-        style={{ width: label.width * scale, height: label.height * scale }}
+    <div
+      className={cn(
+        'relative bg-white shadow-sm ring-1 ring-border',
+        className,
+      )}
+      style={{ width: label.width * scale, height: label.height * scale }}
+    >
+      <canvas
+        ref={canvasRef}
+        width={label.width}
+        height={label.height}
+        aria-hidden
+        className="absolute inset-0 size-full"
+        style={{ imageRendering: scale > 1 ? 'pixelated' : 'auto' }}
+      />
+      <svg
+        viewBox={`0 0 ${label.width} ${label.height}`}
+        className="absolute inset-0 size-full overflow-visible"
+        style={{ cursor: hovered ? 'pointer' : 'default' }}
+        onPointerMove={(event) => {
+          const { x, y } = pointToDots(event)
+          setHovered(findHighlightRegionAtPoint(regions, x, y))
+        }}
+        onPointerLeave={() => setHovered(undefined)}
+        onClick={(event) => {
+          const { x, y } = pointToDots(event)
+          select(findHighlightRegionAtPoint(regions, x, y))
+        }}
       >
-        <canvas
-          ref={canvasRef}
-          width={label.width}
-          height={label.height}
-          aria-hidden
-          className="absolute inset-0 size-full"
-          style={{ imageRendering: scale > 1 ? 'pixelated' : 'auto' }}
-        />
-        <svg
-          viewBox={`0 0 ${label.width} ${label.height}`}
-          className="absolute inset-0 size-full overflow-visible"
-          style={{ cursor: hovered ? 'pointer' : 'default' }}
-          onPointerMove={(event) => {
-            const { x, y } = pointToDots(event)
-            setHovered(findHighlightRegionAtPoint(regions, x, y))
-          }}
-          onPointerLeave={() => setHovered(undefined)}
-          onClick={(event) => {
-            const { x, y } = pointToDots(event)
-            select(findHighlightRegionAtPoint(regions, x, y))
-          }}
-        >
-          {focusable.map((region, regionIndex) => (
-            <rect
-              key={regionIndex}
-              x={region.x}
-              y={region.y}
-              width={region.width}
-              height={region.height}
-              fill="transparent"
-              role="button"
-              tabIndex={0}
-              aria-label={m.region_label({
-                type: region.type,
-                line: lineAt(starts, region.sourceSpan.start),
-              })}
-              className="outline-none"
-              onFocus={() => setHovered(region)}
-              onBlur={() => setHovered(undefined)}
-              onKeyDown={(event) => onKeyDown(event, region)}
-            />
-          ))}
-          {hovered && hovered !== selected && (
-            <RegionOutline region={hovered} variant="hover" />
-          )}
-          {selected && (
-            <RegionOutline
-              ref={selectedRef}
-              region={selected}
-              variant="selected"
-            />
-          )}
-        </svg>
-      </div>
-      <figcaption className="text-xs text-muted-foreground">
-        {m.label_caption({ index: index + 1, count })}
-      </figcaption>
-    </figure>
+        {focusable.map((region, regionIndex) => (
+          <rect
+            key={regionIndex}
+            x={region.x}
+            y={region.y}
+            width={region.width}
+            height={region.height}
+            fill="transparent"
+            role="button"
+            tabIndex={0}
+            aria-label={m.region_label({
+              type: region.type,
+              line: lineAt(starts, region.sourceSpan.start),
+            })}
+            className="outline-none"
+            onFocus={() => setHovered(region)}
+            onBlur={() => setHovered(undefined)}
+            onKeyDown={(event) => onKeyDown(event, region)}
+          />
+        ))}
+        {hovered && hovered !== selected && (
+          <RegionOutline region={hovered} variant="hover" />
+        )}
+        {selected && (
+          <RegionOutline
+            ref={selectedRef}
+            region={selected}
+            variant="selected"
+          />
+        )}
+      </svg>
+    </div>
   )
+}
+
+/** Keeps a displayed canvas in sync with the one it shows. */
+function useCanvasCopy(image: HTMLCanvasElement) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const context = canvas?.getContext('2d')
+    if (!canvas || !context) return
+    context.clearRect(0, 0, canvas.width, canvas.height)
+    context.drawImage(image, 0, 0)
+  }, [image])
+  return canvasRef
+}
+
+function drawInkDiff(local: HTMLCanvasElement, remote: HTMLCanvasElement) {
+  const diff = diffInk(readPixels(local), readPixels(remote))
+  const canvas = document.createElement('canvas')
+  canvas.width = diff.width
+  canvas.height = diff.height
+  canvas
+    .getContext('2d')
+    ?.putImageData(new ImageData(diff.data, diff.width, diff.height), 0, 0)
+  return { canvas, differing: diff.differing, inked: diff.inked }
+}
+
+function readPixels(canvas: HTMLCanvasElement) {
+  const { width, height } = canvas
+  const context = canvas.getContext('2d')
+  if (!context) return { width, height, data: new Uint8ClampedArray(0) }
+  return context.getImageData(0, 0, width, height)
+}
+
+function formatPercent(ratio: number) {
+  return new Intl.NumberFormat(getLocale(), {
+    style: 'percent',
+    maximumSignificantDigits: 2,
+  }).format(ratio)
 }
 
 interface RegionOutlineProps {
@@ -347,7 +642,8 @@ function StatusLine({
   render,
   isRendering,
   error,
-}: LabelPreviewProps) {
+  comparison,
+}: LabelPreviewProps & { comparison?: Comparison }) {
   const settings = useSelector(
     editorStore,
     (state) => selectPanel(state, panelId)?.settings ?? DEFAULT_SETTINGS,
@@ -405,12 +701,50 @@ function StatusLine({
           })}
         </span>
       )}
-      {isRendering && <span className="ml-auto">{m.status_rendering()}</span>}
+      {comparison && (
+        <ComparisonStatus comparison={comparison} localCount={labels.length} />
+      )}
+      {isRendering ? (
+        <span className="ml-auto">{m.status_rendering()}</span>
+      ) : comparison?.isFetching ? (
+        <span className="ml-auto">{m.compare_loading()}</span>
+      ) : null}
     </div>
   )
 }
 
-function ZoomButton({
+function ComparisonStatus({
+  comparison: { labelary, isStale, error, refetch },
+  localCount,
+}: {
+  comparison: Comparison
+  localCount: number
+}) {
+  if (error) {
+    const message =
+      error instanceof LabelaryError && error.status === 429
+        ? m.compare_rate_limited()
+        : m.compare_failed({ message: error.message })
+    return (
+      <span className="flex items-center gap-2">
+        <span className="text-destructive">{message}</span>
+        <Button variant="outline" size="xs" onClick={refetch}>
+          {m.retry()}
+        </Button>
+      </span>
+    )
+  }
+  if (labelary && !isStale && labelary.total !== localCount) {
+    return (
+      <span className="text-foreground">
+        {m.compare_count({ count: labelary.total })}
+      </span>
+    )
+  }
+  return null
+}
+
+function HeaderButton({
   label,
   onClick,
   pressed,
