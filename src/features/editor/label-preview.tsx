@@ -1,7 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, MouseEvent } from 'react'
 import {
+  IconApi,
   IconArrowsMaximize,
+  IconBolt,
   IconGitCompare,
   IconZoomIn,
   IconZoomOut,
@@ -225,12 +227,18 @@ export function LabelPreview({
           }}
           aria-label={m.preview_source()}
         >
-          <ToggleGroupItem value="local">{m.preview_live()}</ToggleGroupItem>
+          <ToggleGroupItem value="local">
+            <IconBolt />
+            {m.preview_live()}
+          </ToggleGroupItem>
           {/* The tooltip sits inside so its data-state doesn't replace the item's. */}
           <ToggleGroupItem value="labelary">
             <Tooltip>
               <TooltipTrigger asChild>
-                <span>{m.preview_api()}</span>
+                <span className="flex items-center gap-1">
+                  <IconApi />
+                  {m.preview_api()}
+                </span>
               </TooltipTrigger>
               <TooltipContent>{m.preview_api_hint()}</TooltipContent>
             </Tooltip>

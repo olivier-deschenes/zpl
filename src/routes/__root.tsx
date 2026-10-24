@@ -62,7 +62,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         >
           {m.skip_to_editor()}
         </a>
-        <TooltipProvider>{children}</TooltipProvider>
+        <TooltipProvider delayDuration={600}>{children}</TooltipProvider>
         <TanStackDevtools
           config={{
             position: 'bottom-right',
