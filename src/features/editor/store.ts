@@ -11,53 +11,144 @@ export interface SourceSelection {
   origin: 'editor' | 'preview'
 }
 
-export interface EditorState {
+/** One editor and preview pair, shown side by side with the others. */
+export interface Panel {
+  id: string
   source: string
   settings: LabelSettings
-  selection: SourceSelection | null
 }
 
-const STORAGE_KEY = 'zpl-editor:v1'
+export interface EditorState {
+  panels: Panel[]
+  /**
+   * Keyed by panel id. Kept apart from `panels` because it changes on every
+   * cursor move and is never saved.
+   */
+  selections: Partial<Record<string, SourceSelection | null>>
+}
+
+export const MAX_PANELS = 4
+
+const STORAGE_KEY = 'zpl-editor:v2'
+/** Single-label state saved before there were panels. */
+const LEGACY_STORAGE_KEY = 'zpl-editor:v1'
 
 export const editorStore = createStore<EditorState>({
-  ...loadPersisted(),
-  selection: null,
+  panels: loadPersisted(),
+  selections: {},
 })
 
-let persisted: Pick<EditorState, 'source' | 'settings'> = editorStore.state
+let persisted = editorStore.state.panels
 
-editorStore.subscribe(({ source, settings }) => {
-  // Selection changes on every cursor move; only write when content changes.
-  if (source === persisted.source && settings === persisted.settings) return
-  persisted = { source, settings }
+editorStore.subscribe(({ panels }) => {
+  // Selection changes on every cursor move; only write when panels change.
+  if (panels === persisted) return
+  persisted = panels
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ source, settings }))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ panels }))
   } catch {
     // Storage can be full or blocked (private mode); the editor still works.
   }
 })
 
-export function setSource(source: string) {
-  editorStore.setState((state) =>
-    state.source === source ? state : { ...state, source },
+export function selectPanel(state: EditorState, id: string): Panel | undefined {
+  return state.panels.find((panel) => panel.id === id)
+}
+
+export function setSource(id: string, source: string) {
+  updatePanel(id, (panel) =>
+    panel.source === source ? panel : { ...panel, source },
   )
 }
 
-export function setSettings(settings: Partial<LabelSettings>) {
-  editorStore.setState((state) => ({
-    ...state,
-    settings: { ...state.settings, ...settings },
+export function setSettings(id: string, settings: Partial<LabelSettings>) {
+  updatePanel(id, (panel) => ({
+    ...panel,
+    settings: { ...panel.settings, ...settings },
   }))
 }
 
-export function setSelection(selection: SourceSelection | null) {
+export function setSelection(id: string, selection: SourceSelection | null) {
   editorStore.setState((state) =>
     // Preview clicks always go through, so clicking the same field again
     // scrolls the editor back to it.
-    selection?.origin !== 'preview' && sameSelection(state.selection, selection)
+    selection?.origin !== 'preview' &&
+    sameSelection(state.selections[id] ?? null, selection)
       ? state
-      : { ...state, selection },
+      : { ...state, selections: { ...state.selections, [id]: selection } },
   )
+}
+
+/** Adds an empty panel at the end, sized like the last one. */
+export function addPanel(): string | undefined {
+  const last = editorStore.state.panels.at(-1)
+  const panel = createPanel('', last?.settings ?? DEFAULT_SETTINGS)
+  return insertPanel(panel, editorStore.state.panels.length)
+}
+
+/** Copies a panel's source and settings into a new panel right after it. */
+export function duplicatePanel(id: string): string | undefined {
+  const { panels } = editorStore.state
+  const index = panels.findIndex((panel) => panel.id === id)
+  if (index === -1) return undefined
+  const { source, settings } = panels[index]
+  return insertPanel(createPanel(source, settings), index + 1)
+}
+
+/** Returns the panel's id, or nothing when there is no room for it. */
+export function insertPanel(panel: Panel, index: number): string | undefined {
+  if (editorStore.state.panels.length >= MAX_PANELS) return undefined
+  editorStore.setState((state) => ({
+    ...state,
+    panels: [
+      ...state.panels.slice(0, index),
+      panel,
+      ...state.panels.slice(index),
+    ],
+  }))
+  return panel.id
+}
+
+/**
+ * Removes a panel unless it is the last one. Returns it with its position so
+ * it can be put back with `insertPanel`.
+ */
+export function removePanel(id: string) {
+  const { panels } = editorStore.state
+  const index = panels.findIndex((panel) => panel.id === id)
+  if (index === -1 || panels.length === 1) return undefined
+
+  const panel = panels[index]
+  editorStore.setState((state) => {
+    const { [id]: _removed, ...selections } = state.selections
+    return {
+      panels: state.panels.filter((item) => item.id !== id),
+      selections,
+    }
+  })
+  return { panel, index }
+}
+
+function updatePanel(id: string, update: (panel: Panel) => Panel) {
+  editorStore.setState((state) => {
+    const current = selectPanel(state, id)
+    if (!current) return state
+    const next = update(current)
+    if (next === current) return state
+    return {
+      ...state,
+      panels: state.panels.map((panel) => (panel === current ? next : panel)),
+    }
+  })
+}
+
+function createPanel(source: string, settings: LabelSettings): Panel {
+  return { id: createPanelId(), source, settings }
+}
+
+function createPanelId() {
+  // crypto.randomUUID needs a secure context, which a LAN preview isn't.
+  return Math.random().toString(36).slice(2, 10)
 }
 
 function sameSelection(a: SourceSelection | null, b: SourceSelection | null) {
@@ -65,20 +156,32 @@ function sameSelection(a: SourceSelection | null, b: SourceSelection | null) {
   return a.from === b.from && a.to === b.to && a.origin === b.origin
 }
 
-function loadPersisted(): Pick<EditorState, 'source' | 'settings'> {
-  const fallback = { source: SAMPLE_LABEL, settings: DEFAULT_SETTINGS }
+function loadPersisted(): Panel[] {
+  const fallback = [createPanel(SAMPLE_LABEL, DEFAULT_SETTINGS)]
   if (typeof localStorage === 'undefined') return fallback
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return fallback
-    const parsed = JSON.parse(raw) as Partial<EditorState>
-    return {
-      source: typeof parsed.source === 'string' ? parsed.source : SAMPLE_LABEL,
-      settings: sanitizeSettings(parsed.settings),
+    if (raw) {
+      const { panels } = JSON.parse(raw) as { panels?: unknown }
+      if (!Array.isArray(panels) || panels.length === 0) return fallback
+      return panels
+        .slice(0, MAX_PANELS)
+        .map((panel: Partial<Panel> | null) => sanitizePanel(panel))
     }
+
+    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY)
+    return legacy ? [sanitizePanel(JSON.parse(legacy))] : fallback
   } catch {
     return fallback
+  }
+}
+
+function sanitizePanel(value: Partial<Panel> | null): Panel {
+  return {
+    id: typeof value?.id === 'string' && value.id ? value.id : createPanelId(),
+    source: typeof value?.source === 'string' ? value.source : SAMPLE_LABEL,
+    settings: sanitizeSettings(value?.settings),
   }
 }
 

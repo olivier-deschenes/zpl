@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { undo } from '@codemirror/commands'
 import { lintGutter, setDiagnostics } from '@codemirror/lint'
 import type { Diagnostic } from '@codemirror/lint'
@@ -12,7 +12,7 @@ import { decodeBase64Zpl } from '#/lib/zpl/base64'
 import type { ZplDiagnostic } from '#/lib/zpl/render'
 import { m } from '#/paraglide/messages'
 import { uniqueDiagnostics } from './diagnostics'
-import { editorStore, setSelection, setSource } from './store'
+import { editorStore, selectPanel, setSelection, setSource } from './store'
 import type { LabelRender } from './use-label-render'
 import { fromPreview, setHighlight, zpl } from './zpl-language'
 
@@ -87,27 +87,44 @@ const base64Input = EditorView.domEventHandlers({
   },
 })
 
-/** Tells the preview where the cursor is so it can outline that field. */
-const selectionSync = EditorView.updateListener.of((update) => {
-  if (!update.selectionSet) return
-  if (update.transactions.some((tr) => tr.annotation(fromPreview))) return
-  const { head } = update.state.selection.main
-  setSelection({ from: head, to: head, origin: 'editor' })
-})
+/** Tells the panel's preview where the cursor is so it can outline that field. */
+function selectionSync(panelId: string) {
+  return EditorView.updateListener.of((update) => {
+    if (!update.selectionSet) return
+    if (update.transactions.some((tr) => tr.annotation(fromPreview))) return
+    const { head } = update.state.selection.main
+    setSelection(panelId, { from: head, to: head, origin: 'editor' })
+  })
+}
 
-const extensions = [
-  zpl(),
-  lintGutter(),
-  EditorView.lineWrapping,
-  EditorView.contentAttributes.of({ 'aria-label': m.editor_label() }),
-  base64Input,
-  selectionSync,
-]
+interface ZplEditorProps {
+  panelId: string
+  render: LabelRender | undefined
+  autoFocus?: boolean
+}
 
-export function ZplEditor({ render }: { render: LabelRender | undefined }) {
-  const source = useSelector(editorStore, (state) => state.source)
-  const selection = useSelector(editorStore, (state) => state.selection)
+export function ZplEditor({ panelId, render, autoFocus }: ZplEditorProps) {
+  const source = useSelector(
+    editorStore,
+    (state) => selectPanel(state, panelId)?.source ?? '',
+  )
+  const selection = useSelector(
+    editorStore,
+    (state) => state.selections[panelId] ?? null,
+  )
   const [view, setView] = useState<EditorView | null>(null)
+
+  const extensions = useMemo(
+    () => [
+      zpl(),
+      lintGutter(),
+      EditorView.lineWrapping,
+      EditorView.contentAttributes.of({ 'aria-label': m.editor_label() }),
+      base64Input,
+      selectionSync(panelId),
+    ],
+    [panelId],
+  )
 
   // Follow clicks in the preview: highlight the field's code and scroll to it.
   useEffect(() => {
@@ -147,8 +164,9 @@ export function ZplEditor({ render }: { render: LabelRender | undefined }) {
   return (
     <CodeMirror
       value={source}
-      onChange={setSource}
+      onChange={(value) => setSource(panelId, value)}
       onCreateEditor={setView}
+      autoFocus={autoFocus}
       extensions={extensions}
       theme="none"
       height="100%"

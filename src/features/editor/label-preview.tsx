@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, MouseEvent } from 'react'
 import {
   IconArrowsHorizontal,
@@ -15,11 +15,11 @@ import {
   TooltipTrigger,
 } from '#/components/ui/tooltip'
 import { useElementWidth } from '#/hooks/use-element-width'
-import { dotsToInches, dpiFor } from '#/lib/zpl/render'
+import { DEFAULT_SETTINGS, dotsToInches, dpiFor } from '#/lib/zpl/render'
 import type { HighlightRegion, RenderedLabel } from '#/lib/zpl/render'
 import { m } from '#/paraglide/messages'
 import { lineAt, lineStarts, uniqueDiagnostics } from './diagnostics'
-import { editorStore, setSelection } from './store'
+import { editorStore, selectPanel, setSelection } from './store'
 import type { SourceSelection } from './store'
 import type { LabelRender } from './use-label-render'
 
@@ -29,26 +29,33 @@ const VIEWPORT_PADDING = 24
 type Label = RenderedLabel<HTMLCanvasElement>
 
 interface LabelPreviewProps {
+  panelId: string
   render: LabelRender | undefined
   isRendering: boolean
   error: Error | null
 }
 
 export function LabelPreview({
+  panelId,
   render,
   isRendering,
   error,
 }: LabelPreviewProps) {
-  const selection = useSelector(editorStore, (state) => state.selection)
+  const headingId = useId()
+  const selection = useSelector(
+    editorStore,
+    (state) => state.selections[panelId] ?? null,
+  )
   const [zoom, setZoom] = useState<number | 'fit'>('fit')
   const [viewportRef, viewportWidth] = useElementWidth<HTMLDivElement>()
 
   const labels = render?.result.labels ?? []
   const widest = Math.max(1, ...labels.map((label) => label.width))
-  const fitScale = Math.max(
-    ZOOM_STEPS[0],
-    (viewportWidth - VIEWPORT_PADDING * 2) / widest,
-  )
+  // With nothing to fit, a new empty panel would read "Zoom 60000%".
+  const fitScale =
+    labels.length === 0
+      ? 1
+      : Math.max(ZOOM_STEPS[0], (viewportWidth - VIEWPORT_PADDING * 2) / widest)
   const scale = zoom === 'fit' ? fitScale : zoom
   const starts = useMemo(() => lineStarts(render?.source ?? ''), [render])
 
@@ -59,13 +66,13 @@ export function LabelPreview({
 
   return (
     <section
-      aria-labelledby="preview-heading"
+      aria-labelledby={headingId}
       className="flex h-full min-w-0 flex-col"
     >
       <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b px-3">
-        <h2 id="preview-heading" className="text-xs font-medium">
+        <h3 id={headingId} className="truncate text-xs font-medium">
           {m.preview_label()}
-        </h2>
+        </h3>
         <div className="flex items-center gap-1">
           <span className="mr-1 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
             {m.zoom_level({ percent: Math.round(scale * 100) })}
@@ -90,7 +97,9 @@ export function LabelPreview({
         ref={viewportRef}
         className="min-h-0 flex-1 overflow-auto bg-muted"
         onClick={(event) => {
-          if (event.target === event.currentTarget) setSelection(null)
+          if (event.target === event.currentTarget) {
+            setSelection(panelId, null)
+          }
         }}
       >
         {labels.length === 0 ? (
@@ -105,6 +114,7 @@ export function LabelPreview({
             {labels.map((label, index) => (
               <LabelView
                 key={index}
+                panelId={panelId}
                 label={label}
                 index={index}
                 count={labels.length}
@@ -117,12 +127,18 @@ export function LabelPreview({
         )}
       </div>
 
-      <StatusLine render={render} isRendering={isRendering} error={error} />
+      <StatusLine
+        panelId={panelId}
+        render={render}
+        isRendering={isRendering}
+        error={error}
+      />
     </section>
   )
 }
 
 interface LabelViewProps {
+  panelId: string
   label: Label
   index: number
   count: number
@@ -132,6 +148,7 @@ interface LabelViewProps {
 }
 
 function LabelView({
+  panelId,
   label,
   index,
   count,
@@ -174,6 +191,7 @@ function LabelView({
 
   const select = (region: HighlightRegion | undefined) =>
     setSelection(
+      panelId,
       region
         ? {
             from: region.sourceSpan.start,
@@ -324,8 +342,16 @@ function RegionOutline({ region, variant, ref }: RegionOutlineProps) {
   )
 }
 
-function StatusLine({ render, isRendering, error }: LabelPreviewProps) {
-  const settings = useSelector(editorStore, (state) => state.settings)
+function StatusLine({
+  panelId,
+  render,
+  isRendering,
+  error,
+}: LabelPreviewProps) {
+  const settings = useSelector(
+    editorStore,
+    (state) => selectPanel(state, panelId)?.settings ?? DEFAULT_SETTINGS,
+  )
   const labels = render?.result.labels ?? []
   const problems = render
     ? uniqueDiagnostics(render.result.diagnostics).filter(

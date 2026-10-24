@@ -3,9 +3,9 @@ import { useDebouncedValue } from '@tanstack/react-pacer'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useSelector } from '@tanstack/react-store'
 
-import { renderLabels } from '#/lib/zpl/render'
+import { DEFAULT_SETTINGS, renderLabels } from '#/lib/zpl/render'
 import type { RenderJobResult } from '#/lib/zpl/render'
-import { editorStore } from './store'
+import { editorStore, selectPanel } from './store'
 
 const RENDER_DELAY_MS = 300
 
@@ -15,9 +15,15 @@ export interface LabelRender {
   result: RenderJobResult<HTMLCanvasElement>
 }
 
-export function useLabelRender() {
-  const source = useSelector(editorStore, (state) => state.source)
-  const settings = useSelector(editorStore, (state) => state.settings)
+export function useLabelRender(panelId: string) {
+  const source = useSelector(
+    editorStore,
+    (state) => selectPanel(state, panelId)?.source ?? '',
+  )
+  const settings = useSelector(
+    editorStore,
+    (state) => selectPanel(state, panelId)?.settings ?? DEFAULT_SETTINGS,
+  )
   const [debouncedSource] = useDebouncedValue(source, {
     wait: RENDER_DELAY_MS,
   })

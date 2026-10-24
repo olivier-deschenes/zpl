@@ -1,16 +1,21 @@
+import { Fragment, useState } from 'react'
+import { IconPlus } from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
+import { shallow, useSelector } from '@tanstack/react-store'
 
+import { Button } from '#/components/ui/button'
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from '#/components/ui/resizable'
-import { LabelPreview } from '#/features/editor/label-preview'
-import { Toolbar } from '#/features/editor/toolbar'
-import { useLabelRender } from '#/features/editor/use-label-render'
-import { ZplEditor } from '#/features/editor/zpl-editor'
+import { EditorPanel } from '#/features/editor/editor-panel'
+import { MAX_PANELS, addPanel, editorStore } from '#/features/editor/store'
 import { useMediaQuery } from '#/hooks/use-media-query'
 import { m } from '#/paraglide/messages'
+
+/** Keeps the editor and the panel's toolbar usable when panels are squeezed. */
+const MIN_PANEL_WIDTH = 280
 
 export const Route = createFileRoute('/')({
   // CodeMirror and the canvas renderer only run in the browser.
@@ -20,41 +25,62 @@ export const Route = createFileRoute('/')({
 
 function EditorPage() {
   const stacked = useMediaQuery('(max-width: 767px)')
-  const { render, isRendering, error } = useLabelRender()
+  const panelIds = useSelector(
+    editorStore,
+    (state) => state.panels.map((panel) => panel.id),
+    { compare: shallow },
+  )
+  // Panels opened after load take focus, ready for a paste.
+  const [initialIds] = useState(() => new Set(panelIds))
+
+  const panel = (id: string, index: number) => (
+    <EditorPanel
+      panelId={id}
+      index={index}
+      count={panelIds.length}
+      stacked={stacked}
+      autoFocus={!initialIds.has(id)}
+    />
+  )
 
   return (
     <div className="flex h-dvh flex-col">
       <header className="flex h-12 shrink-0 items-center justify-between gap-4 border-b px-4">
         <h1 className="text-sm font-semibold">{m.app_title()}</h1>
-        <Toolbar />
+        <Button
+          variant="outline"
+          onClick={() => addPanel()}
+          disabled={panelIds.length >= MAX_PANELS}
+        >
+          <IconPlus data-icon="inline-start" />
+          {m.add_panel()}
+        </Button>
       </header>
       <main className="min-h-0 flex-1">
-        <ResizablePanelGroup orientation={stacked ? 'vertical' : 'horizontal'}>
-          <ResizablePanel defaultSize="45%" minSize="20%">
-            <section
-              id="editor"
-              aria-labelledby="editor-heading"
-              className="flex h-full min-w-0 flex-col"
-            >
-              <div className="flex h-10 shrink-0 items-center border-b px-3">
-                <h2 id="editor-heading" className="text-xs font-medium">
-                  {m.editor_label()}
-                </h2>
+        {stacked ? (
+          // Phones get one full-width panel at a time; swipe between them.
+          <div className="flex h-full snap-x snap-mandatory overflow-x-auto overscroll-x-contain">
+            {panelIds.map((id, index) => (
+              <div
+                key={id}
+                className="h-full w-full shrink-0 snap-start not-first:border-l"
+              >
+                {panel(id, index)}
               </div>
-              <div className="min-h-0 flex-1">
-                <ZplEditor render={render} />
-              </div>
-            </section>
-          </ResizablePanel>
-          <ResizableHandle withHandle />
-          <ResizablePanel minSize="20%">
-            <LabelPreview
-              render={render}
-              isRendering={isRendering}
-              error={error}
-            />
-          </ResizablePanel>
-        </ResizablePanelGroup>
+            ))}
+          </div>
+        ) : (
+          <ResizablePanelGroup orientation="horizontal">
+            {panelIds.map((id, index) => (
+              <Fragment key={id}>
+                {index > 0 && <ResizableHandle className="w-1 bg-border" />}
+                <ResizablePanel id={id} minSize={MIN_PANEL_WIDTH}>
+                  {panel(id, index)}
+                </ResizablePanel>
+              </Fragment>
+            ))}
+          </ResizablePanelGroup>
+        )}
       </main>
     </div>
   )

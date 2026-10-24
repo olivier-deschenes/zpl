@@ -1,6 +1,12 @@
 import { useId } from 'react'
-import { IconAdjustmentsHorizontal, IconChevronDown } from '@tabler/icons-react'
+import {
+  IconAdjustmentsHorizontal,
+  IconChevronDown,
+  IconCopy,
+  IconX,
+} from '@tabler/icons-react'
 import { useForm } from '@tanstack/react-form'
+import { useSelector } from '@tanstack/react-store'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
@@ -29,36 +35,119 @@ import {
   SelectTrigger,
   SelectValue,
 } from '#/components/ui/select'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '#/components/ui/tooltip'
 import { copyBase64, copyZpl, exportPdf, exportPng } from '#/lib/zpl/export'
-import { DENSITIES, MAX_SIZE_IN, MIN_SIZE_IN } from '#/lib/zpl/render'
+import {
+  DEFAULT_SETTINGS,
+  DENSITIES,
+  MAX_SIZE_IN,
+  MIN_SIZE_IN,
+} from '#/lib/zpl/render'
 import type { PrintDensity } from '#/lib/zpl/render'
 import { m } from '#/paraglide/messages'
-import { editorStore, setSettings } from './store'
+import {
+  MAX_PANELS,
+  duplicatePanel,
+  editorStore,
+  insertPanel,
+  removePanel,
+  selectPanel,
+  setSettings,
+} from './store'
 
-export function Toolbar() {
+interface PanelToolbarProps {
+  panelId: string
+  /** The panel's display name, used in the close notice. */
+  title: string
+}
+
+export function PanelToolbar({ panelId, title }: PanelToolbarProps) {
+  const panelCount = useSelector(editorStore, (state) => state.panels.length)
+
+  const close = () => {
+    const removed = removePanel(panelId)
+    if (!removed) return
+    toast(m.panel_closed({ name: title }), {
+      duration: 8000,
+      action: {
+        label: m.undo(),
+        onClick: () => insertPanel(removed.panel, removed.index),
+      },
+    })
+  }
+
   return (
-    <div className="flex items-center gap-2">
-      <SettingsPopover />
-      <ExportMenu />
+    <div className="flex shrink-0 items-center gap-1">
+      <SettingsPopover panelId={panelId} />
+      <ExportMenu panelId={panelId} />
+      <IconButton
+        label={m.duplicate_panel()}
+        onClick={() => duplicatePanel(panelId)}
+        disabled={panelCount >= MAX_PANELS}
+      >
+        <IconCopy />
+      </IconButton>
+      {panelCount > 1 && (
+        <IconButton label={m.close_panel()} onClick={close}>
+          <IconX />
+        </IconButton>
+      )}
     </div>
   )
 }
 
-function SettingsPopover() {
+function IconButton({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string
+  onClick: () => void
+  disabled?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={label}
+          onClick={onClick}
+          disabled={disabled}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function SettingsPopover({ panelId }: { panelId: string }) {
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="outline">
-          <IconAdjustmentsHorizontal data-icon="inline-start" />
-          {m.settings()}
-        </Button>
-      </PopoverTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="icon-sm" aria-label={m.settings()}>
+              <IconAdjustmentsHorizontal />
+            </Button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{m.settings()}</TooltipContent>
+      </Tooltip>
       <PopoverContent align="end" className="w-72">
         <PopoverHeader>
           <PopoverTitle>{m.settings()}</PopoverTitle>
           <PopoverDescription>{m.settings_hint()}</PopoverDescription>
         </PopoverHeader>
-        <SettingsForm />
+        <SettingsForm panelId={panelId} />
       </PopoverContent>
     </Popover>
   )
@@ -84,9 +173,10 @@ const settingsSchema = z.object({
 })
 
 /** Applies every valid change straight away; invalid input stays visible until fixed. */
-function SettingsForm() {
+function SettingsForm({ panelId }: { panelId: string }) {
   const id = useId()
-  const { settings } = editorStore.state
+  const settings =
+    selectPanel(editorStore.state, panelId)?.settings ?? DEFAULT_SETTINGS
 
   const form = useForm({
     defaultValues: {
@@ -97,7 +187,7 @@ function SettingsForm() {
     listeners: {
       onChange: ({ formApi }) => {
         const parsed = settingsSchema.safeParse(formApi.state.values)
-        if (parsed.success) setSettings(parsed.data)
+        if (parsed.success) setSettings(panelId, parsed.data)
       },
     },
   })
@@ -177,12 +267,15 @@ function SettingsForm() {
   )
 }
 
-function ExportMenu() {
+function ExportMenu({ panelId }: { panelId: string }) {
   // Exports read the live source, not the debounced one the preview shows.
+  const livePanel = () => selectPanel(editorStore.state, panelId)
+
   const download = async (exporter: typeof exportPng, done: string) => {
-    const { source, settings } = editorStore.state
+    const panel = livePanel()
+    if (!panel) return
     try {
-      await exporter(source, settings)
+      await exporter(panel.source, panel.settings)
       toast.success(done)
     } catch (error) {
       toast.error(
@@ -195,7 +288,7 @@ function ExportMenu() {
 
   const copy = async (copier: typeof copyZpl, done: string) => {
     try {
-      await copier(editorStore.state.source)
+      await copier(livePanel()?.source ?? '')
       toast.success(done)
     } catch {
       toast.error(m.copy_failed())
@@ -205,7 +298,7 @@ function ExportMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button>
+        <Button variant="outline" size="sm">
           {m.export()}
           <IconChevronDown data-icon="inline-end" />
         </Button>
