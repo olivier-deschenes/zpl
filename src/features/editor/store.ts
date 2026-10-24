@@ -140,16 +140,11 @@ export function insertPanel(panel: Panel, index: number): string | undefined {
   return panel.id
 }
 
-/**
- * Removes a panel unless it is the last one. Returns it with its position so
- * it can be put back with `insertPanel`.
- */
+/** Removes a panel unless it is the last one. */
 export function removePanel(id: string) {
   const { panels } = editorStore.state
-  const index = panels.findIndex((panel) => panel.id === id)
-  if (index === -1 || panels.length === 1) return undefined
+  if (panels.length === 1 || !selectPanel(editorStore.state, id)) return
 
-  const panel = panels[index]
   editorStore.setState((state) => {
     const { [id]: _removed, ...selections } = state.selections
     return {
@@ -158,19 +153,7 @@ export function removePanel(id: string) {
       selections,
     }
   })
-  return { panel, index }
 }
-
-export type OpenedSharedLabel =
-  | { status: 'already-open' }
-  | {
-      status: 'opened'
-      id: string
-      /** The untouched sample panel it took the place of. */
-      replacedSample: boolean
-      /** The last panel, closed to make room when every slot was taken. */
-      closed?: { panel: Panel; index: number }
-    }
 
 /**
  * Opens a label from a share link as the first panel, where it is in view
@@ -180,7 +163,7 @@ export type OpenedSharedLabel =
 export function openSharedLabel(
   source: string,
   settings: Partial<Record<keyof LabelSettings, unknown>>,
-): OpenedSharedLabel {
+) {
   const shared = createPanel(source, sanitizeSettings(settings))
   const { panels } = editorStore.state
   if (
@@ -190,12 +173,11 @@ export function openSharedLabel(
         sameSettings(panel.settings, shared.settings),
     )
   ) {
-    return { status: 'already-open' }
+    return
   }
 
   const replacedSample = panels.length === 1 && isUntouched(panels[0])
   const kept = replacedSample ? [] : panels.slice(0, MAX_PANELS - 1)
-  const closedPanel = replacedSample ? undefined : panels.at(MAX_PANELS - 1)
 
   editorStore.setState((state) => ({
     ...state,
@@ -206,13 +188,6 @@ export function openSharedLabel(
       ),
     ),
   }))
-
-  return {
-    status: 'opened',
-    id: shared.id,
-    replacedSample,
-    closed: closedPanel && { panel: closedPanel, index: MAX_PANELS - 1 },
-  }
 }
 
 function updatePanel(id: string, update: (panel: Panel) => Panel) {

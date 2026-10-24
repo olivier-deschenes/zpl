@@ -8,7 +8,6 @@ import { TanStackDevtools } from '@tanstack/react-devtools'
 
 import TanStackQueryDevtools from '../integrations/tanstack-query/devtools'
 
-import { Toaster } from '#/components/ui/sonner'
 import { TooltipProvider } from '#/components/ui/tooltip'
 import { m } from '#/paraglide/messages'
 
@@ -64,7 +63,6 @@ function RootDocument({ children }: { children: React.ReactNode }) {
           {m.skip_to_editor()}
         </a>
         <TooltipProvider>{children}</TooltipProvider>
-        <Toaster position="bottom-left" />
         <TanStackDevtools
           config={{
             position: 'bottom-right',

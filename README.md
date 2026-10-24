@@ -7,7 +7,7 @@ A browser-based editor for Zebra ZPL labels, live at [zpl.puuid.com](https://zpl
 - Compare a panel with another panel or with [Labelary](https://labelary.com/viewer.html), side by side or as a colour-coded difference overlay, to see what changed between two versions or where the local render differs. Comparing with Labelary sends the ZPL to its public API, spaced to stay under its rate limit of 3 requests a second.
 - Click anything on the label to jump to and highlight its code; move the cursor in the code to outline the matching element.
 - Hover a command to see its name and how well the preview supports it; problems found while rendering are underlined in the code.
-- Pasted or dropped base64 is detected and decoded automatically (Undo keeps the raw base64).
+- Pasted or dropped base64 is detected and decoded automatically.
 - Export to PNG (a zip for multi-label jobs) or PDF at the real label size, or copy as ZPL or base64.
 - Copy a share link from a panel's Export menu. The label is compressed into the part of the URL after `#`, which browsers never send to a server; opening the link adds the label as the first panel.
 - Label size and print density fall back to the settings when the ZPL has no `^PW` / `^LL`.

@@ -59,7 +59,6 @@ export function EditorPanel({
               </h2>
               <PanelToolbar
                 panelId={panelId}
-                title={title}
                 labelCount={render?.result.labels.length ?? 0}
               />
             </div>

@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { undo } from '@codemirror/commands'
 import { lintGutter, setDiagnostics } from '@codemirror/lint'
 import type { Diagnostic } from '@codemirror/lint'
 import { EditorSelection } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { useSelector } from '@tanstack/react-store'
 import CodeMirror from '@uiw/react-codemirror'
-import { toast } from 'sonner'
 
 import { decodeBase64Zpl } from '#/lib/zpl/base64'
 import type { ZplDiagnostic } from '#/lib/zpl/render'
@@ -15,20 +13,6 @@ import { uniqueDiagnostics } from './diagnostics'
 import { editorStore, selectPanel, setSelection, setSource } from './store'
 import type { LabelRender } from './use-label-render'
 import { fromPreview, setHighlight, zpl } from './zpl-language'
-
-/** Offers to keep the raw base64 instead: undo the decode, then insert it as-is. */
-function announceDecoded(view: EditorView, keepRaw: () => void) {
-  toast(m.decoded_base64(), {
-    duration: 8000,
-    action: {
-      label: m.undo(),
-      onClick: () => {
-        undo(view)
-        keepRaw()
-      },
-    },
-  })
-}
 
 /** Pasted or dropped base64 is decoded to ZPL before it reaches the document. */
 const base64Input = EditorView.domEventHandlers({
@@ -42,11 +26,6 @@ const base64Input = EditorView.domEventHandlers({
       userEvent: 'input.paste',
       scrollIntoView: true,
     })
-    announceDecoded(view, () =>
-      view.dispatch(view.state.replaceSelection(text ?? ''), {
-        userEvent: 'input.paste',
-      }),
-    )
     return true
   },
   drop(event, view) {
@@ -54,16 +33,16 @@ const base64Input = EditorView.domEventHandlers({
     if (file) {
       // A dropped file replaces the whole label rather than splicing into it.
       event.preventDefault()
-      void file.text().then((text) => {
-        const replaceAll = (insert: string) =>
-          view.dispatch({
-            changes: { from: 0, to: view.state.doc.length, insert },
-            userEvent: 'input.drop',
-          })
-        const decoded = decodeBase64Zpl(text)
-        replaceAll(decoded ?? text)
-        if (decoded) announceDecoded(view, () => replaceAll(text))
-      })
+      void file.text().then((text) =>
+        view.dispatch({
+          changes: {
+            from: 0,
+            to: view.state.doc.length,
+            insert: decodeBase64Zpl(text) ?? text,
+          },
+          userEvent: 'input.drop',
+        }),
+      )
       return true
     }
 
@@ -75,14 +54,11 @@ const base64Input = EditorView.domEventHandlers({
     const pos =
       view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
       view.state.selection.main.head
-    const insertAt = (insert: string) =>
-      view.dispatch({
-        changes: { from: pos, insert },
-        selection: { anchor: pos + insert.length },
-        userEvent: 'input.drop',
-      })
-    insertAt(decoded)
-    announceDecoded(view, () => insertAt(text ?? ''))
+    view.dispatch({
+      changes: { from: pos, insert: decoded },
+      selection: { anchor: pos + decoded.length },
+      userEvent: 'input.drop',
+    })
     return true
   },
 })

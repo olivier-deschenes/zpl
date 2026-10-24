@@ -8,7 +8,6 @@ import {
 } from '@tabler/icons-react'
 import { useForm } from '@tanstack/react-form'
 import { useSelector } from '@tanstack/react-store'
-import { toast } from 'sonner'
 import { z } from 'zod'
 
 import { Button } from '#/components/ui/button'
@@ -63,7 +62,6 @@ import {
   addPanel,
   duplicatePanel,
   editorStore,
-  insertPanel,
   removePanel,
   selectPanel,
   setFileName,
@@ -72,30 +70,12 @@ import {
 
 interface PanelToolbarProps {
   panelId: string
-  /** The panel's display name, used in the close notice. */
-  title: string
   /** Labels in the panel's current preview. */
   labelCount: number
 }
 
-export function PanelToolbar({
-  panelId,
-  title,
-  labelCount,
-}: PanelToolbarProps) {
+export function PanelToolbar({ panelId, labelCount }: PanelToolbarProps) {
   const panelCount = useSelector(editorStore, (state) => state.panels.length)
-
-  const close = () => {
-    const removed = removePanel(panelId)
-    if (!removed) return
-    toast(m.panel_closed({ name: title }), {
-      duration: 8000,
-      action: {
-        label: m.undo(),
-        onClick: () => insertPanel(removed.panel, removed.index),
-      },
-    })
-  }
 
   return (
     <div className="flex shrink-0 items-center gap-1">
@@ -116,7 +96,10 @@ export function PanelToolbar({
         <IconCopy />
       </IconButton>
       {panelCount > 1 && (
-        <IconButton label={m.close_panel()} onClick={close}>
+        <IconButton
+          label={m.close_panel()}
+          onClick={() => removePanel(panelId)}
+        >
           <IconX />
         </IconButton>
       )}
@@ -338,31 +321,10 @@ function ExportMenu({
     const panel = livePanel()
     if (!panel) return
     setFileName(panelId, baseName)
-    try {
-      const name = await exportAs(
-        format,
-        panel.source,
-        panel.settings,
-        baseName,
-      )
-      toast.success(m.downloaded({ name }))
-    } catch (error) {
-      toast.error(
-        m.export_failed({
-          message: error instanceof Error ? error.message : String(error),
-        }),
-      )
-    }
+    await exportAs(format, panel.source, panel.settings, baseName)
   }
 
-  const copy = async (copier: typeof copyZpl, done: string) => {
-    try {
-      await copier(livePanel()?.source ?? '')
-      toast.success(done)
-    } catch {
-      toast.error(m.copy_failed())
-    }
-  }
+  const copy = (copier: typeof copyZpl) => copier(livePanel()?.source ?? '')
 
   return (
     <>
@@ -391,12 +353,10 @@ function ExportMenu({
             </DropdownMenuItem>
           ))}
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => void copy(copyZpl, m.copied_zpl())}>
+          <DropdownMenuItem onSelect={() => void copy(copyZpl)}>
             {m.copy_zpl()}
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => void copy(copyBase64, m.copied_base64())}
-          >
+          <DropdownMenuItem onSelect={() => void copy(copyBase64)}>
             {m.copy_base64()}
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => void copyShareLink()}>
