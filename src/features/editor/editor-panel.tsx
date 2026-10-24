@@ -54,9 +54,20 @@ export function EditorPanel({
         <ResizablePanel defaultSize="45%" minSize="20%">
           <div className="flex h-full min-w-0 flex-col">
             <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b pr-1.5 pl-3">
-              <h2 id={headingId} className="truncate text-xs font-medium">
-                {title}
-              </h2>
+              <div className="flex min-w-0 items-center gap-2">
+                {index === 0 && (
+                  <img
+                    src="/logo.svg"
+                    alt=""
+                    width={20}
+                    height={20}
+                    className="size-5 shrink-0 dark:invert"
+                  />
+                )}
+                <h2 id={headingId} className="truncate text-xs font-medium">
+                  {title}
+                </h2>
+              </div>
               <PanelToolbar
                 panelId={panelId}
                 labelCount={render?.result.labels.length ?? 0}

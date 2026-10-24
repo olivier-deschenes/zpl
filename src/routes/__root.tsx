@@ -9,6 +9,7 @@ import { TanStackDevtools } from '@tanstack/react-devtools'
 import TanStackQueryDevtools from '../integrations/tanstack-query/devtools'
 
 import { TooltipProvider } from '#/components/ui/tooltip'
+import { SITE_URL, SOCIAL_IMAGE_URL } from '#/lib/site'
 import { m } from '#/paraglide/messages'
 
 import { getLocale } from '#/paraglide/runtime'
@@ -32,17 +33,59 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: m.app_title(),
+        title: m.app_meta_title(),
       },
       {
         name: 'description',
         content: m.app_description(),
       },
+      { name: 'application-name', content: m.app_title() },
+      { name: 'theme-color', content: '#171717' },
+      { name: 'color-scheme', content: 'light dark' },
+      { property: 'og:type', content: 'website' },
+      { property: 'og:site_name', content: m.app_title() },
+      { property: 'og:title', content: m.app_meta_title() },
+      { property: 'og:description', content: m.app_description() },
+      { property: 'og:url', content: SITE_URL },
+      { property: 'og:image', content: SOCIAL_IMAGE_URL },
+      { property: 'og:image:type', content: 'image/png' },
+      { property: 'og:image:width', content: '1200' },
+      { property: 'og:image:height', content: '630' },
+      { property: 'og:image:alt', content: m.social_image_alt() },
+      { name: 'twitter:card', content: 'summary_large_image' },
+      { name: 'twitter:title', content: m.app_meta_title() },
+      { name: 'twitter:description', content: m.app_description() },
+      { name: 'twitter:image', content: SOCIAL_IMAGE_URL },
+      { name: 'twitter:image:alt', content: m.social_image_alt() },
     ],
     links: [
       {
         rel: 'stylesheet',
         href: appCss,
+      },
+      { rel: 'canonical', href: SITE_URL },
+      { rel: 'icon', href: '/favicon.ico', sizes: '32x32' },
+      { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
+      {
+        rel: 'apple-touch-icon',
+        href: '/apple-touch-icon.png',
+        sizes: '180x180',
+      },
+      { rel: 'manifest', href: '/site.webmanifest' },
+    ],
+    scripts: [
+      {
+        type: 'application/ld+json',
+        children: JSON.stringify({
+          '@context': 'https://schema.org',
+          '@type': 'WebApplication',
+          name: m.app_title(),
+          url: SITE_URL,
+          description: m.app_description(),
+          applicationCategory: 'DeveloperApplication',
+          operatingSystem: 'Any',
+          image: SOCIAL_IMAGE_URL,
+        }),
       },
     ],
   }),

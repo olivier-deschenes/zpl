@@ -42,3 +42,14 @@ The app runs on Cloudflare Workers through the Cloudflare Vite plugin. `bun run 
 - `src/components/ui/`: shadcn/ui components. Add more with `bunx shadcn@latest add <component>`.
 
 Built with TanStack Start, Router, Query, Store, Form and Pacer, shadcn/ui on Tailwind CSS, and CodeMirror 6.
+
+## Branding and link previews
+
+- `public/logo.svg`: the label-shaped Z mark in the existing editor toolbar. The toolbar inverts it in dark mode; `public/favicon.svg` adapts to the browser's theme.
+- `assets/brand/og-image.svg`: editable vector source for the 1200 × 630 share card, with Geist lettering outlined so it renders without installed fonts. `public/og-image.png` is the social preview used by Open Graph and Twitter cards.
+- `public/favicon.ico`, `public/apple-touch-icon.png`, and `public/icon-*.png`: browser and saved-site icons derived from the same mark. `public/site.webmanifest` declares the saved-site identity.
+- `src/lib/site.ts`: the canonical URL. Both custom domains identify `https://zpl.puuid.com/` as the canonical site; keep `public/robots.txt` and `public/sitemap.xml` in sync if it changes.
+- `src/routes/__root.tsx`: server-rendered page metadata. Link previews use the same generic card for every shared label; the label's URL fragment is never included in page metadata.
+- `messages/en.json`: the page title, description, and share-image description.
+
+Deploy the app and its public assets together for the new link previews to become available. Sharing services may cache earlier previews until they fetch the page again.

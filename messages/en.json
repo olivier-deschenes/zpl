@@ -1,7 +1,9 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "app_title": "ZPL editor",
-  "app_description": "Edit Zebra ZPL labels with a live preview that runs entirely in your browser.",
+  "app_meta_title": "ZPL editor | Live label preview, compare & export",
+  "app_description": "Edit and preview Zebra ZPL labels in your browser. Compare versions, understand commands, and export to PNG, PDF or ZPL. No account needed.",
+  "social_image_alt": "ZPL editor. Write ZPL. See the label. Live preview, label comparison, and PNG, PDF or ZPL export.",
   "skip_to_editor": "Skip to editor",
   "editor_label": "ZPL source",
   "add_panel": "Add panel",

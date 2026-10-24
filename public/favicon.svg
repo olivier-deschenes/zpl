@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <style>
+    .label { fill: #171717; }
+    .letter { fill: #fff; }
+    @media (prefers-color-scheme: dark) {
+      .label { fill: #fafafa; }
+      .letter { fill: #171717; }
+    }
+  </style>
+  <path class="label" d="M4 0h40l16 16v48H4z" />
+  <path class="letter" d="M18 18h28v8L29 39h17v7H18v-8l17-13H18z" />
+</svg>
