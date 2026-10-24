@@ -2,8 +2,8 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, MouseEvent } from 'react'
 import {
   IconApi,
-  IconArrowsMaximize,
   IconBolt,
+  IconChevronDown,
   IconGitCompare,
   IconZoomIn,
   IconZoomOut,
@@ -20,9 +20,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '#/components/ui/dropdown-menu'
-import { Separator } from '#/components/ui/separator'
 import { ToggleGroup, ToggleGroupItem } from '#/components/ui/toggle-group'
 import {
   Tooltip,
@@ -37,6 +37,7 @@ import type { HighlightRegion, RenderedLabel } from '#/lib/zpl/render'
 import { m } from '#/paraglide/messages'
 import { getLocale } from '#/paraglide/runtime'
 import { lineAt, lineStarts, uniqueDiagnostics } from './diagnostics'
+import { SettingsPopover } from './settings-popover'
 import {
   editorStore,
   selectPanel,
@@ -49,6 +50,8 @@ import type { LabelRender } from './use-label-render'
 import { useLabelaryRender } from './use-labelary-render'
 
 const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4]
+/** The zoom menu's shortcuts, besides fitting the pane. */
+const ZOOM_PRESETS = [0.5, 1, 2]
 const VIEWPORT_PADDING = 24
 /** Between the two renders when comparing side by side. */
 const PAIR_GAP = 16
@@ -64,6 +67,7 @@ type View = PreviewSource | CompareMode
 type Comparison = ReturnType<typeof useLabelaryRender>
 /** What the preview is compared with: Labelary's render or another panel. */
 type CompareTarget = { kind: 'labelary' } | { kind: 'panel'; panelId: string }
+type Zoom = number | 'fit'
 
 /** A label from Labelary or another panel, set beside this panel's. */
 interface ComparedLabel {
@@ -103,7 +107,7 @@ export function LabelPreview({
     editorStore,
     (state) => state.selections[panelId] ?? null,
   )
-  const [zoom, setZoom] = useState<number | 'fit'>('fit')
+  const [zoom, setZoom] = useState<Zoom>('fit')
   const [viewportRef, viewport] = useElementSize<HTMLDivElement>()
   const panelIds = useSelector(
     editorStore,
@@ -200,17 +204,12 @@ export function LabelPreview({
   const scale = zoom === 'fit' ? fitScale : zoom
   const starts = useMemo(() => lineStarts(shown?.source ?? ''), [shown])
 
-  const zoomIn = () =>
-    setZoom(ZOOM_STEPS.find((step) => step > scale * 1.01) ?? scale)
-  const zoomOut = () =>
-    setZoom(ZOOM_STEPS.filter((step) => step < scale * 0.99).at(-1) ?? scale)
-
   return (
     <section
       aria-labelledby={headingId}
       className="flex h-full min-w-0 flex-col"
     >
-      <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b px-3">
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
         <h3 id={headingId} className="sr-only">
           {m.preview_label()}
         </h3>
@@ -244,32 +243,6 @@ export function LabelPreview({
             </Tooltip>
           </ToggleGroupItem>
         </ToggleGroup>
-        <div className="flex items-center gap-1">
-          <span className="mr-1 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
-            {m.zoom_level({ percent: Math.round(scale * 100) })}
-          </span>
-          <HeaderButton label={m.zoom_out()} onClick={zoomOut}>
-            <IconZoomOut />
-          </HeaderButton>
-          <HeaderButton label={m.zoom_in()} onClick={zoomIn}>
-            <IconZoomIn />
-          </HeaderButton>
-          <HeaderButton
-            label={m.zoom_fit()}
-            onClick={() => setZoom('fit')}
-            pressed={zoom === 'fit'}
-          >
-            <IconArrowsMaximize />
-          </HeaderButton>
-          <Separator orientation="vertical" className="mx-1 h-4" />
-          <CompareMenu
-            target={target}
-            panels={panelIds
-              .filter((id) => id !== panelId)
-              .map((id) => ({ id, name: panelName(id) }))}
-            onTargetChange={setCompareWith}
-          />
-        </div>
       </div>
 
       {target && (
@@ -336,7 +309,17 @@ export function LabelPreview({
               }
             : undefined
         }
-      />
+      >
+        <CompareMenu
+          target={target}
+          panelName={panelName}
+          panels={panelIds
+            .filter((id) => id !== panelId)
+            .map((id) => ({ id, name: panelName(id) }))}
+          onTargetChange={setCompareWith}
+        />
+        <ZoomMenu zoom={zoom} scale={scale} onZoomChange={setZoom} />
+      </StatusLine>
     </section>
   )
 }
@@ -344,10 +327,12 @@ export function LabelPreview({
 /** Picks what to compare with; Labelary is never picked by default. */
 function CompareMenu({
   target,
+  panelName,
   panels,
   onTargetChange,
 }: {
   target: CompareTarget | null
+  panelName: (id: string) => string
   /** The other panels, in order. */
   panels: ReadonlyArray<{ id: string; name: string }>
   onTargetChange: (target: CompareTarget | null) => void
@@ -361,22 +346,28 @@ function CompareMenu({
 
   return (
     <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={m.compare()}
-              className={cn(target && 'bg-muted')}
-            >
-              <IconGitCompare />
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent>{m.compare()}</TooltipContent>
-      </Tooltip>
-      <DropdownMenuContent align="end" className="w-60">
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="xs"
+          className={cn(
+            'text-muted-foreground',
+            target && 'bg-muted text-foreground',
+          )}
+        >
+          <IconGitCompare data-icon="inline-start" />
+          {target
+            ? m.compare_target({
+                name:
+                  target.kind === 'labelary'
+                    ? m.compare_labelary_title()
+                    : panelName(target.panelId),
+              })
+            : m.compare()}
+          <IconChevronDown data-icon="inline-end" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="end" className="w-60">
         <DropdownMenuLabel>{m.compare_with()}</DropdownMenuLabel>
         <DropdownMenuRadioGroup
           value={value}
@@ -412,6 +403,76 @@ function CompareMenu({
             {m.compare_add_panel_hint()}
           </DropdownMenuItem>
         )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function ZoomMenu({
+  zoom,
+  scale,
+  onZoomChange,
+}: {
+  zoom: Zoom
+  /** The zoom in effect, which fitting the pane works out. */
+  scale: number
+  onZoomChange: (zoom: Zoom) => void
+}) {
+  const percent = (value: number) => Math.round(value * 100)
+  const larger = ZOOM_STEPS.find((step) => step > scale * 1.01)
+  const smaller = ZOOM_STEPS.filter((step) => step < scale * 0.99).at(-1)
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="xs"
+          aria-label={m.zoom_level({ percent: percent(scale) })}
+          className="text-muted-foreground tabular-nums"
+        >
+          {m.zoom_percent({ percent: percent(scale) })}
+          <IconChevronDown data-icon="inline-end" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="end" className="w-40">
+        {/* Stepping keeps the menu open, so a few clicks zoom a long way. */}
+        <DropdownMenuItem
+          disabled={larger === undefined}
+          onSelect={(event) => {
+            event.preventDefault()
+            if (larger) onZoomChange(larger)
+          }}
+        >
+          <IconZoomIn />
+          {m.zoom_in()}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={smaller === undefined}
+          onSelect={(event) => {
+            event.preventDefault()
+            if (smaller) onZoomChange(smaller)
+          }}
+        >
+          <IconZoomOut />
+          {m.zoom_out()}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuRadioGroup
+          value={String(zoom)}
+          onValueChange={(value) =>
+            onZoomChange(value === 'fit' ? 'fit' : Number(value))
+          }
+        >
+          <DropdownMenuRadioItem value="fit">
+            {m.zoom_fit()}
+          </DropdownMenuRadioItem>
+          {ZOOM_PRESETS.map((preset) => (
+            <DropdownMenuRadioItem key={preset} value={String(preset)}>
+              {m.zoom_percent({ percent: percent(preset) })}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -922,10 +983,13 @@ function StatusLine({
   error,
   comparison,
   otherPanel,
+  children,
 }: LabelPreviewProps & {
   comparison?: Comparison
   /** The panel being compared with, once its render is available. */
   otherPanel?: { name: string; labelCount: number }
+  /** Controls at the end of the line. */
+  children?: React.ReactNode
 }) {
   const settings = useSelector(
     editorStore,
@@ -938,70 +1002,76 @@ function StatusLine({
       ).length
     : 0
   const first = labels.at(0)
+  // The rendered size, which the ZPL may set, else what the settings ask for.
+  const size = first
+    ? m.status_size({
+        width: formatInches(first.width, first.printDensity),
+        height: formatInches(first.height, first.printDensity),
+        dpi: dpiFor(first.printDensity),
+      })
+    : m.status_size({
+        width: settings.widthIn,
+        height: settings.heightIn,
+        dpi: dpiFor(settings.dpmm),
+      })
 
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="flex min-h-8 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t px-3 py-1.5 text-xs text-muted-foreground tabular-nums"
-    >
-      {error ? (
-        <span className="text-destructive">
-          {m.render_failed({ message: error.message })}
-        </span>
-      ) : null}
-      {render && (
-        <>
-          <span>
-            {labels.length === 1
-              ? m.status_one_label()
-              : m.status_many_labels({ count: labels.length })}
+    <div className="flex min-h-8 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t py-1 pr-1.5 pl-1.5 text-xs text-muted-foreground tabular-nums">
+      <SettingsPopover panelId={panelId}>
+        <Button variant="ghost" size="xs" className="text-muted-foreground">
+          {size}
+          <IconChevronDown data-icon="inline-end" />
+        </Button>
+      </SettingsPopover>
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex flex-1 flex-wrap items-center gap-x-3 gap-y-1"
+      >
+        {error ? (
+          <span className="text-destructive">
+            {m.render_failed({ message: error.message })}
           </span>
-          {first && (
+        ) : null}
+        {render && (
+          <>
             <span>
-              {m.status_size({
-                width: formatInches(first.width, first.printDensity),
-                height: formatInches(first.height, first.printDensity),
-                dpi: dpiFor(first.printDensity),
-              })}
+              {labels.length === 1
+                ? m.status_one_label()
+                : m.status_many_labels({ count: labels.length })}
             </span>
-          )}
-          <span className={problems > 0 ? 'text-foreground' : undefined}>
-            {problems === 0
-              ? m.status_no_problems()
-              : problems === 1
-                ? m.status_one_problem()
-                : m.status_many_problems({ count: problems })}
+            <span className={problems > 0 ? 'text-foreground' : undefined}>
+              {problems === 0
+                ? m.status_no_problems()
+                : problems === 1
+                  ? m.status_one_problem()
+                  : m.status_many_problems({ count: problems })}
+            </span>
+          </>
+        )}
+        {comparison && (
+          <ComparisonStatus
+            comparison={comparison}
+            localCount={labels.length}
+          />
+        )}
+        {otherPanel && otherPanel.labelCount !== labels.length && (
+          <span className="text-foreground">
+            {otherPanel.labelCount === 1
+              ? m.compare_panel_one_label({ name: otherPanel.name })
+              : m.compare_panel_many_labels({
+                  name: otherPanel.name,
+                  count: otherPanel.labelCount,
+                })}
           </span>
-        </>
-      )}
-      {!render && !error && (
-        <span>
-          {m.status_size({
-            width: settings.widthIn,
-            height: settings.heightIn,
-            dpi: dpiFor(settings.dpmm),
-          })}
-        </span>
-      )}
-      {comparison && (
-        <ComparisonStatus comparison={comparison} localCount={labels.length} />
-      )}
-      {otherPanel && otherPanel.labelCount !== labels.length && (
-        <span className="text-foreground">
-          {otherPanel.labelCount === 1
-            ? m.compare_panel_one_label({ name: otherPanel.name })
-            : m.compare_panel_many_labels({
-                name: otherPanel.name,
-                count: otherPanel.labelCount,
-              })}
-        </span>
-      )}
-      {isRendering ? (
-        <span className="ml-auto">{m.status_rendering()}</span>
-      ) : comparison?.isFetching ? (
-        <span className="ml-auto">{m.compare_loading()}</span>
-      ) : null}
+        )}
+        {isRendering ? (
+          <span className="ml-auto">{m.status_rendering()}</span>
+        ) : comparison?.isFetching ? (
+          <span className="ml-auto">{m.compare_loading()}</span>
+        ) : null}
+      </div>
+      <div className="flex items-center gap-1">{children}</div>
     </div>
   )
 }
@@ -1035,39 +1105,6 @@ function ComparisonStatus({
     )
   }
   return null
-}
-
-function HeaderButton({
-  label,
-  tooltip = label,
-  onClick,
-  pressed,
-  children,
-}: {
-  label: string
-  /** Longer text for the tooltip; the label still names the button. */
-  tooltip?: string
-  onClick: () => void
-  pressed?: boolean
-  children: React.ReactNode
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={label}
-          aria-pressed={pressed}
-          onClick={onClick}
-          className="aria-pressed:bg-muted"
-        >
-          {children}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{tooltip}</TooltipContent>
-    </Tooltip>
-  )
 }
 
 type SizedRegion = HighlightRegion & { width: number; height: number }
