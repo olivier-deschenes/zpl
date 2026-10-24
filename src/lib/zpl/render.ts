@@ -1,4 +1,3 @@
-import { renderZpl } from 'zplr/web'
 import type { PrintDensity, RenderJobOptions } from 'zplr/web'
 
 export type {
@@ -66,6 +65,10 @@ export function toRenderOptions(settings: LabelSettings): RenderJobOptions {
   }
 }
 
-export function renderLabels(source: string, settings: LabelSettings) {
+export async function renderLabels(source: string, settings: LabelSettings) {
+  // The store imports this module for its settings, which puts it in the
+  // entry chunk; importing the renderer here keeps zplr, with its barcode
+  // and font engines, out of it.
+  const { renderZpl } = await import('zplr/web')
   return renderZpl(source, toRenderOptions(settings))
 }

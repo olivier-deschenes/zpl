@@ -1,5 +1,4 @@
 import { zipSync } from 'fflate'
-import { PDFDocument } from 'pdf-lib'
 
 import { encodeBase64 } from './base64'
 import { dotsToInches, renderLabels } from './render'
@@ -83,6 +82,8 @@ export async function exportPdf(
   const { labels } = await renderLabels(source, settings)
   if (labels.length === 0) throw new Error('No labels to export')
 
+  // Only PDF export needs pdf-lib, so fetch it on first use.
+  const { PDFDocument } = await import('pdf-lib')
   const pdf = await PDFDocument.create()
   for (const label of labels) {
     const image = await pdf.embedPng(await toPngBytes(label))
