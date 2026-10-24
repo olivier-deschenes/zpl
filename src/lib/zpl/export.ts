@@ -118,7 +118,7 @@ export function copyBase64(source: string) {
   return writeClipboard(encodeBase64(source))
 }
 
-async function writeClipboard(text: string) {
+export async function writeClipboard(text: string) {
   try {
     await navigator.clipboard.writeText(text)
   } catch (error) {

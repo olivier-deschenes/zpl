@@ -56,6 +56,7 @@ import {
 import type { PrintDensity } from '#/lib/zpl/render'
 import { m } from '#/paraglide/messages'
 import { DownloadDialog } from './download-dialog'
+import { useCopyShareLink } from './share-link'
 import {
   MAX_PANELS,
   duplicatePanel,
@@ -305,6 +306,7 @@ function ExportMenu({
   })
   // Exports read the live source, not the debounced one the preview shows.
   const livePanel = () => selectPanel(editorStore.state, panelId)
+  const copyShareLink = useCopyShareLink(panelId)
 
   const promptFileName = (format: ExportFormat) => {
     const { panels } = editorStore.state
@@ -387,6 +389,9 @@ function ExportMenu({
             onSelect={() => void copy(copyBase64, m.copied_base64())}
           >
             {m.copy_base64()}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => void copyShareLink()}>
+            {m.copy_share_link()}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

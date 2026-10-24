@@ -1,6 +1,11 @@
 import { createStore } from '@tanstack/react-store'
 
-import { DEFAULT_SETTINGS, DENSITIES } from '#/lib/zpl/render'
+import {
+  DEFAULT_SETTINGS,
+  DENSITIES,
+  MAX_SIZE_IN,
+  MIN_SIZE_IN,
+} from '#/lib/zpl/render'
 import type { LabelSettings } from '#/lib/zpl/render'
 import { SAMPLE_LABEL } from './sample-label'
 
@@ -154,6 +159,60 @@ export function removePanel(id: string) {
   return { panel, index }
 }
 
+export type OpenedSharedLabel =
+  | { status: 'already-open' }
+  | {
+      status: 'opened'
+      id: string
+      /** The untouched sample panel it took the place of. */
+      replacedSample: boolean
+      /** The last panel, closed to make room when every slot was taken. */
+      closed?: { panel: Panel; index: number }
+    }
+
+/**
+ * Opens a label from a share link as the first panel, where it is in view
+ * even on a phone. It takes the place of an untouched sample, and closes
+ * the last panel when every slot is taken.
+ */
+export function openSharedLabel(
+  source: string,
+  settings: Partial<Record<keyof LabelSettings, unknown>>,
+): OpenedSharedLabel {
+  const shared = createPanel(source, sanitizeSettings(settings))
+  const { panels } = editorStore.state
+  if (
+    panels.some(
+      (panel) =>
+        panel.source === source &&
+        sameSettings(panel.settings, shared.settings),
+    )
+  ) {
+    return { status: 'already-open' }
+  }
+
+  const replacedSample = panels.length === 1 && isUntouched(panels[0])
+  const kept = replacedSample ? [] : panels.slice(0, MAX_PANELS - 1)
+  const closedPanel = replacedSample ? undefined : panels.at(MAX_PANELS - 1)
+
+  editorStore.setState((state) => ({
+    ...state,
+    panels: [shared, ...kept],
+    selections: Object.fromEntries(
+      Object.entries(state.selections).filter(([id]) =>
+        kept.some((panel) => panel.id === id),
+      ),
+    ),
+  }))
+
+  return {
+    status: 'opened',
+    id: shared.id,
+    replacedSample,
+    closed: closedPanel && { panel: closedPanel, index: MAX_PANELS - 1 },
+  }
+}
+
 function updatePanel(id: string, update: (panel: Panel) => Panel) {
   editorStore.setState((state) => {
     const current = selectPanel(state, id)
@@ -174,6 +233,17 @@ function createPanel(source: string, settings: LabelSettings): Panel {
 function createPanelId() {
   // crypto.randomUUID needs a secure context, which a LAN preview isn't.
   return Math.random().toString(36).slice(2, 10)
+}
+
+function sameSettings(a: LabelSettings, b: LabelSettings) {
+  return (
+    a.dpmm === b.dpmm && a.widthIn === b.widthIn && a.heightIn === b.heightIn
+  )
+}
+
+/** Still the first-visit sample, or empty: nothing to lose by replacing it. */
+function isUntouched(panel: Panel) {
+  return panel.source === SAMPLE_LABEL || panel.source.trim() === ''
 }
 
 function sameSelection(a: SourceSelection | null, b: SourceSelection | null) {
@@ -227,14 +297,17 @@ function sanitizePanel(value: Partial<Panel> | null): Panel {
   }
 }
 
+/** Settings from storage or a share link, which may be stale or hand-edited. */
 function sanitizeSettings(
-  value: Partial<LabelSettings> | undefined,
+  value: Partial<Record<keyof LabelSettings, unknown>> | undefined,
 ): LabelSettings {
   const dpmm =
     DENSITIES.find((density) => density.dpmm === value?.dpmm)?.dpmm ??
     DEFAULT_SETTINGS.dpmm
   const size = (n: unknown, fallback: number) =>
-    typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : fallback
+    typeof n === 'number' && Number.isFinite(n) && n > 0
+      ? Math.min(Math.max(n, MIN_SIZE_IN), MAX_SIZE_IN)
+      : fallback
 
   return {
     dpmm,

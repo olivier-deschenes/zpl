@@ -1,6 +1,6 @@
 import { Fragment, useId, useState } from 'react'
 import { IconPlus } from '@tabler/icons-react'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import { shallow, useSelector } from '@tanstack/react-store'
 
 import { Button } from '#/components/ui/button'
@@ -17,6 +17,7 @@ import {
   TooltipTrigger,
 } from '#/components/ui/tooltip'
 import { EditorPanel } from '#/features/editor/editor-panel'
+import { openShareLink } from '#/features/editor/share-link'
 import {
   MAX_PANELS,
   addPanel,
@@ -32,6 +33,12 @@ const MIN_PANEL_WIDTH = 280
 export const Route = createFileRoute('/')({
   // CodeMirror and the canvas renderer only run in the browser.
   ssr: false,
+  beforeLoad: ({ location, preload }) => {
+    if (!preload && openShareLink(location.hash)) {
+      // Clear the label from the address bar so a reload doesn't reopen it.
+      throw redirect({ to: '/', hash: '', replace: true })
+    }
+  },
   component: EditorPage,
 })
 
