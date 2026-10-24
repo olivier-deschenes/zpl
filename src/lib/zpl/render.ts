@@ -12,7 +12,7 @@ export type {
 export interface LabelSettings {
   /** Print-head density in dots per millimetre. */
   dpmm: PrintDensity
-  /** Fallback label size, used when the ZPL has no ^PW / ^LL. */
+  /** Label size, which wins over the ZPL's ^PW / ^LL like media in a printer. */
   widthIn: number
   heightIn: number
 }
@@ -56,11 +56,8 @@ export function toRenderOptions(settings: LabelSettings): RenderJobOptions {
   const dpi = dpiFor(settings.dpmm)
   return {
     printDensity: settings.dpmm,
-    fallbackSize: {
-      width: Math.round(settings.widthIn * dpi),
-      height: Math.round(settings.heightIn * dpi),
-      unit: 'dots',
-    },
+    width: Math.round(settings.widthIn * dpi),
+    height: Math.round(settings.heightIn * dpi),
     limits: { maxLabels: 50 },
   }
 }

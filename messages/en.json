@@ -60,7 +60,7 @@
   "diff_identical": "Identical to {name}",
   "diff_summary": "{percent} of inked dots differ",
   "settings": "Label settings",
-  "settings_hint": "Used when the ZPL has no ^PW or ^LL.",
+  "settings_hint": "The label to render on, whatever ^PW or ^LL say.",
   "density": "Print density",
   "width_in": "Width (in)",
   "height_in": "Height (in)",

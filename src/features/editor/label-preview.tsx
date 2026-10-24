@@ -1002,7 +1002,7 @@ function StatusLine({
       ).length
     : 0
   const first = labels.at(0)
-  // The rendered size, which the ZPL may set, else what the settings ask for.
+  // The rendered size once there is one, else what the settings ask for.
   const size = first
     ? m.status_size({
         width: formatInches(first.width, first.printDensity),
