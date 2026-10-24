@@ -6,11 +6,20 @@ import {
   IconZoomIn,
   IconZoomOut,
 } from '@tabler/icons-react'
-import { useSelector } from '@tanstack/react-store'
+import { shallow, useSelector } from '@tanstack/react-store'
 import { cn } from 'cn'
 import { findHighlightRegionAtPoint } from 'zplr/web'
 
 import { Button } from '#/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '#/components/ui/dropdown-menu'
 import { Separator } from '#/components/ui/separator'
 import { ToggleGroup, ToggleGroupItem } from '#/components/ui/toggle-group'
 import {
@@ -21,7 +30,6 @@ import {
 import { useElementSize } from '#/hooks/use-element-size'
 import { DIFF_COLORS, diffInk, rgb } from '#/lib/zpl/diff'
 import { LabelaryError } from '#/lib/zpl/labelary'
-import type { LabelaryLabel } from '#/lib/zpl/labelary'
 import { DEFAULT_SETTINGS, dotsToInches, dpiFor } from '#/lib/zpl/render'
 import type { HighlightRegion, RenderedLabel } from '#/lib/zpl/render'
 import { m } from '#/paraglide/messages'
@@ -29,6 +37,7 @@ import { getLocale } from '#/paraglide/runtime'
 import { lineAt, lineStarts, uniqueDiagnostics } from './diagnostics'
 import { editorStore, selectPanel, setSelection } from './store'
 import type { PreviewSource, SourceSelection } from './store'
+import { useOtherPanelRender } from './use-label-render'
 import type { LabelRender } from './use-label-render'
 import { useLabelaryRender } from './use-labelary-render'
 
@@ -46,6 +55,28 @@ type CompareMode = 'side-by-side' | 'difference'
 /** A single render from either source, or the two compared. */
 type View = PreviewSource | CompareMode
 type Comparison = ReturnType<typeof useLabelaryRender>
+/** What the preview is compared with: Labelary's render or another panel. */
+type CompareTarget = { kind: 'labelary' } | { kind: 'panel'; panelId: string }
+
+/** A label from Labelary or another panel, set beside this panel's. */
+interface ComparedLabel {
+  canvas: HTMLCanvasElement
+  width: number
+  height: number
+}
+
+/** The labels a preview is compared with, and what to call both sides. */
+interface Compared {
+  labels: readonly ComparedLabel[]
+  /** The labels are for older source and are being replaced. */
+  stale: boolean
+  /** Shown in place of a missing label. */
+  placeholder: string
+  localTitle: string
+  remoteTitle: string
+  onlyLocal: string
+  onlyRemote: string
+}
 
 interface LabelPreviewProps {
   panelId: string
@@ -67,24 +98,77 @@ export function LabelPreview({
   )
   const [zoom, setZoom] = useState<number | 'fit'>('fit')
   const [viewportRef, viewport] = useElementSize<HTMLDivElement>()
-  // Off on every load: comparing sends the ZPL to labelary.com.
-  const [compare, setCompare] = useState(false)
+  const panelIds = useSelector(
+    editorStore,
+    (state) => state.panels.map((panel) => panel.id),
+    { compare: shallow },
+  )
+  // Off on every load: comparing with Labelary sends the ZPL to labelary.com.
+  const [compareWith, setCompareWith] = useState<CompareTarget | null>(null)
   const [compareMode, setCompareMode] = useState<CompareMode>('side-by-side')
   const previewSource = useSelector(editorStore, (state) => state.previewSource)
-  const view: View = compare ? compareMode : previewSource
-  const comparison = useLabelaryRender(render, view !== 'local')
+  // Closing the other panel ends the comparison.
+  const target =
+    compareWith?.kind === 'panel' && !panelIds.includes(compareWith.panelId)
+      ? null
+      : compareWith
+  const view: View = target ? compareMode : previewSource
+  const comparison = useLabelaryRender(
+    render,
+    target ? target.kind === 'labelary' : previewSource === 'labelary',
+  )
   const { labelary } = comparison
+  const other = useOtherPanelRender(
+    target?.kind === 'panel' ? target.panelId : undefined,
+  )
+
+  const panelName = (id: string) =>
+    m.panel_title({ index: panelIds.indexOf(id) + 1 })
+  const compared: Compared =
+    target?.kind === 'panel'
+      ? {
+          labels: other.render?.result.labels ?? [],
+          stale: other.isStale,
+          placeholder: m.compare_no_panel_label({
+            name: panelName(target.panelId),
+          }),
+          localTitle: panelName(panelId),
+          remoteTitle: panelName(target.panelId),
+          onlyLocal: m.diff_only({ name: panelName(panelId) }),
+          onlyRemote: m.diff_only({ name: panelName(target.panelId) }),
+        }
+      : {
+          labels: labelary?.labels ?? [],
+          stale: comparison.isStale,
+          placeholder: labelary
+            ? m.compare_no_label()
+            : comparison.error
+              ? m.compare_unavailable()
+              : m.compare_loading(),
+          localTitle: m.compare_editor(),
+          remoteTitle: m.compare_labelary_title(),
+          onlyLocal: m.diff_only_editor(),
+          onlyRemote: m.diff_only_labelary(),
+        }
 
   // Views drawing Labelary over the local render's regions keep to the
   // render its labels were fetched for, so the two always line up while a
   // newer one is on its way.
   const shown =
-    (view === 'difference' || view === 'labelary') && labelary
+    target?.kind !== 'panel' &&
+    (view === 'difference' || view === 'labelary') &&
+    labelary
       ? labelary.local
       : render
   const labels = shown?.result.labels ?? []
-  const widest = Math.max(1, ...labels.map((label) => label.width))
-  const tallest = Math.max(1, ...labels.map((label) => label.height))
+  // Another panel's labels may be bigger, and a difference overlay is as
+  // big as the larger label of the pair.
+  const sized = [
+    ...labels,
+    ...(target ? compared.labels.slice(0, labels.length) : []),
+  ]
+  const widest = Math.max(1, ...sized.map((label) => label.width))
+  const tallest = Math.max(1, ...sized.map((label) => label.height))
   const columns = view === 'side-by-side' ? 2 : 1
   const chromeHeight =
     CAPTION_HEIGHT + (view === 'side-by-side' ? COLUMN_TITLE_HEIGHT : 0)
@@ -108,11 +192,6 @@ export function LabelPreview({
         )
   const scale = zoom === 'fit' ? fitScale : zoom
   const starts = useMemo(() => lineStarts(shown?.source ?? ''), [shown])
-  const remotePlaceholder = labelary
-    ? m.compare_no_label()
-    : comparison.error
-      ? m.compare_unavailable()
-      : m.compare_loading()
 
   const zoomIn = () =>
     setZoom(ZOOM_STEPS.find((step) => step > scale * 1.01) ?? scale)
@@ -146,18 +225,23 @@ export function LabelPreview({
             <IconArrowsMaximize />
           </HeaderButton>
           <Separator orientation="vertical" className="mx-1 h-4" />
-          <HeaderButton
-            label={m.compare_labelary()}
-            onClick={() => setCompare(!compare)}
-            pressed={compare}
-          >
-            <IconGitCompare />
-          </HeaderButton>
+          <CompareMenu
+            target={target}
+            panels={panelIds
+              .filter((id) => id !== panelId)
+              .map((id) => ({ id, name: panelName(id) }))}
+            onTargetChange={setCompareWith}
+          />
         </div>
       </div>
 
-      {compare && (
-        <CompareBar mode={compareMode} onModeChange={setCompareMode} />
+      {target && (
+        <CompareBar
+          mode={compareMode}
+          onModeChange={setCompareMode}
+          compared={compared}
+          sendsToLabelary={target.kind === 'labelary'}
+        />
       )}
 
       <div
@@ -186,9 +270,8 @@ export function LabelPreview({
                   index: index + 1,
                   count: labels.length,
                 })}
-                remote={labelary?.labels[index]}
-                remoteStale={comparison.isStale}
-                remotePlaceholder={remotePlaceholder}
+                remote={compared.labels.at(index)}
+                compared={compared}
                 panelId={panelId}
                 label={label}
                 scale={scale}
@@ -205,18 +288,108 @@ export function LabelPreview({
         render={render}
         isRendering={isRendering}
         error={error}
-        comparison={view === 'local' ? undefined : comparison}
+        comparison={
+          view === 'local' || target?.kind === 'panel' ? undefined : comparison
+        }
+        otherPanel={
+          target?.kind === 'panel' && other.render
+            ? {
+                name: panelName(target.panelId),
+                labelCount: other.render.result.labels.length,
+              }
+            : undefined
+        }
       />
     </section>
+  )
+}
+
+/** Picks what to compare with; Labelary is never picked by default. */
+function CompareMenu({
+  target,
+  panels,
+  onTargetChange,
+}: {
+  target: CompareTarget | null
+  /** The other panels, in order. */
+  panels: ReadonlyArray<{ id: string; name: string }>
+  onTargetChange: (target: CompareTarget | null) => void
+}) {
+  const value =
+    target === null
+      ? 'nothing'
+      : target.kind === 'labelary'
+        ? 'labelary'
+        : `panel:${target.panelId}`
+
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={m.compare()}
+              className={cn(target && 'bg-muted')}
+            >
+              <IconGitCompare />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{m.compare()}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="end" className="w-60">
+        <DropdownMenuLabel>{m.compare_with()}</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={value}
+          onValueChange={(next) =>
+            onTargetChange(
+              next === 'labelary'
+                ? { kind: 'labelary' }
+                : next.startsWith('panel:')
+                  ? { kind: 'panel', panelId: next.slice('panel:'.length) }
+                  : null,
+            )
+          }
+        >
+          <DropdownMenuRadioItem value="nothing">
+            {m.compare_nothing()}
+          </DropdownMenuRadioItem>
+          {panels.map(({ id, name }) => (
+            <DropdownMenuRadioItem key={id} value={`panel:${id}`}>
+              {name}
+            </DropdownMenuRadioItem>
+          ))}
+          <DropdownMenuRadioItem value="labelary">
+            <span className="flex flex-col gap-0.5">
+              {m.compare_labelary_title()}
+              <span className="text-muted-foreground">
+                {m.compare_labelary_hint()}
+              </span>
+            </span>
+          </DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+        {panels.length === 0 && (
+          <DropdownMenuItem disabled>
+            {m.compare_add_panel_hint()}
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
 function CompareBar({
   mode,
   onModeChange,
+  compared,
+  sendsToLabelary,
 }: {
   mode: CompareMode
   onModeChange: (mode: CompareMode) => void
+  compared: Compared
+  sendsToLabelary: boolean
 }) {
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b px-3 py-2">
@@ -240,19 +413,28 @@ function CompareBar({
         </ToggleGroupItem>
       </ToggleGroup>
       {mode === 'difference' ? (
-        <DiffLegend />
-      ) : (
+        <DiffLegend
+          onlyLocal={compared.onlyLocal}
+          onlyRemote={compared.onlyRemote}
+        />
+      ) : sendsToLabelary ? (
         <p className="text-xs text-muted-foreground">{m.compare_notice()}</p>
-      )}
+      ) : null}
     </div>
   )
 }
 
-function DiffLegend() {
+function DiffLegend({
+  onlyLocal,
+  onlyRemote,
+}: {
+  onlyLocal: string
+  onlyRemote: string
+}) {
   const entries = [
     [DIFF_COLORS.both, m.diff_both()],
-    [DIFF_COLORS.onlyA, m.diff_only_editor()],
-    [DIFF_COLORS.onlyB, m.diff_only_labelary()],
+    [DIFF_COLORS.onlyA, onlyLocal],
+    [DIFF_COLORS.onlyB, onlyRemote],
   ] as const
 
   return (
@@ -277,19 +459,16 @@ function DiffLegend() {
 interface LabelFigureProps extends LabelSurfaceProps {
   view: View
   caption: string
-  remote: LabelaryLabel | undefined
-  /** The Labelary label is for older source and is being replaced. */
-  remoteStale: boolean
-  /** Shown in place of a missing Labelary label. */
-  remotePlaceholder: string
+  /** The label at the same position on the other side, if it has one. */
+  remote: ComparedLabel | undefined
+  compared: Compared
 }
 
 function LabelFigure({
   view,
   caption,
   remote,
-  remoteStale,
-  remotePlaceholder,
+  compared,
   ...surface
 }: LabelFigureProps) {
   if (view === 'difference' && remote) {
@@ -297,20 +476,24 @@ function LabelFigure({
       <DiffFigure
         caption={caption}
         remote={remote}
-        stale={remoteStale}
+        remoteTitle={compared.remoteTitle}
+        stale={compared.stale}
         {...surface}
       />
     )
   }
 
   const { label, scale } = surface
-  const remoteClassName = cn('transition-opacity', remoteStale && 'opacity-50')
+  const remoteClassName = cn(
+    'transition-opacity',
+    compared.stale && 'opacity-50',
+  )
   const placeholder = (
     <div
       className="flex items-center justify-center border border-dashed p-4 text-center text-xs text-muted-foreground"
       style={{ width: label.width * scale, height: label.height * scale }}
     >
-      {remotePlaceholder}
+      {compared.placeholder}
     </div>
   )
 
@@ -318,10 +501,10 @@ function LabelFigure({
     <figure className="flex flex-col items-center gap-2">
       {view === 'side-by-side' ? (
         <div className="flex items-start" style={{ gap: PAIR_GAP }}>
-          <RenderColumn title={m.compare_editor()}>
+          <RenderColumn title={compared.localTitle}>
             <LabelSurface {...surface} />
           </RenderColumn>
-          <RenderColumn title={m.compare_labelary_title()}>
+          <RenderColumn title={compared.remoteTitle}>
             {remote ? (
               <RasterSurface
                 image={remote.canvas}
@@ -352,7 +535,7 @@ function LabelFigure({
       )}
       <figcaption className="text-xs text-muted-foreground">
         {view === 'difference'
-          ? `${caption} · ${remotePlaceholder}`
+          ? `${caption} · ${compared.placeholder}`
           : view === 'labelary'
             ? `${caption} · ${m.compare_labelary_title()}`
             : caption}
@@ -364,29 +547,47 @@ function LabelFigure({
 function DiffFigure({
   caption,
   remote,
+  remoteTitle,
   stale,
   ...surface
 }: LabelSurfaceProps & {
   caption: string
-  remote: LabelaryLabel
+  remote: ComparedLabel
+  remoteTitle: string
   stale: boolean
 }) {
-  const local = surface.label.canvas
-  const diff = useMemo(() => drawInkDiff(local, remote.canvas), [local, remote])
+  const { label, scale } = surface
+  const diff = useMemo(
+    () => drawInkDiff(label.canvas, remote.canvas),
+    [label, remote],
+  )
   const summary =
     diff.differing === 0
-      ? m.diff_identical()
+      ? m.diff_identical({ name: remoteTitle })
       : m.diff_summary({ percent: formatPercent(diff.differing / diff.inked) })
+  const sizesDiffer =
+    remote.width !== label.width || remote.height !== label.height
+  const className = cn('transition-opacity', stale && 'opacity-50')
 
   return (
     <figure className="flex flex-col items-center gap-2">
-      <LabelSurface
-        {...surface}
-        image={diff.canvas}
-        className={cn('transition-opacity', stale && 'opacity-50')}
-      />
+      {/* The overlay covers both labels, so a bigger remote label leaves
+          nothing for this label's regions to line up with. */}
+      {diff.canvas.width === label.width &&
+      diff.canvas.height === label.height ? (
+        <LabelSurface {...surface} image={diff.canvas} className={className} />
+      ) : (
+        <RasterSurface
+          image={diff.canvas}
+          width={diff.canvas.width}
+          height={diff.canvas.height}
+          scale={scale}
+          className={className}
+        />
+      )}
       <figcaption className="text-xs text-muted-foreground">
         {caption} · {summary}
+        {sizesDiffer && ` · ${m.diff_sizes_differ()}`}
       </figcaption>
     </figure>
   )
@@ -683,7 +884,12 @@ function StatusLine({
   isRendering,
   error,
   comparison,
-}: LabelPreviewProps & { comparison?: Comparison }) {
+  otherPanel,
+}: LabelPreviewProps & {
+  comparison?: Comparison
+  /** The panel being compared with, once its render is available. */
+  otherPanel?: { name: string; labelCount: number }
+}) {
   const settings = useSelector(
     editorStore,
     (state) => selectPanel(state, panelId)?.settings ?? DEFAULT_SETTINGS,
@@ -743,6 +949,16 @@ function StatusLine({
       )}
       {comparison && (
         <ComparisonStatus comparison={comparison} localCount={labels.length} />
+      )}
+      {otherPanel && otherPanel.labelCount !== labels.length && (
+        <span className="text-foreground">
+          {otherPanel.labelCount === 1
+            ? m.compare_panel_one_label({ name: otherPanel.name })
+            : m.compare_panel_many_labels({
+                name: otherPanel.name,
+                count: otherPanel.labelCount,
+              })}
+        </span>
       )}
       {isRendering ? (
         <span className="ml-auto">{m.status_rendering()}</span>

@@ -2,9 +2,9 @@
 
 A browser-based editor for Zebra ZPL labels, live at [zpl.puuid.com](https://zpl.puuid.com):
 
-- Live preview that re-renders 300 ms after you stop typing, rendered locally by [zplr](https://github.com/le2ni/zplr). Labels never leave the browser unless you turn on Labelary.
+- Live preview that re-renders 300 ms after you stop typing, rendered locally by [zplr](https://github.com/le2ni/zplr). Labels never leave the browser unless you use Labelary or share a link.
 - Up to four panels side by side (swipe between them on phones), each with its own label size and print density. Panels are saved in the browser.
-- Optional comparison with [Labelary](https://labelary.com/viewer.html), side by side or as a colour-coded difference overlay, to spot where the local render differs. It sends the ZPL to Labelary's public API, spaced to stay under its rate limit of 3 requests a second.
+- Compare a panel with another panel or with [Labelary](https://labelary.com/viewer.html), side by side or as a colour-coded difference overlay, to see what changed between two versions or where the local render differs. Comparing with Labelary sends the ZPL to its public API, spaced to stay under its rate limit of 3 requests a second.
 - Click anything on the label to jump to and highlight its code; move the cursor in the code to outline the matching element.
 - Hover a command to see its name and how well the preview supports it; problems found while rendering are underlined in the code.
 - Pasted or dropped base64 is detected and decoded automatically (Undo keeps the raw base64).
