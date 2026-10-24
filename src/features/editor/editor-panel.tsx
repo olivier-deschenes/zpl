@@ -5,7 +5,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from '#/components/ui/resizable'
-import { useElementWidth } from '#/hooks/use-element-width'
+import { useElementSize } from '#/hooks/use-element-size'
 import { m } from '#/paraglide/messages'
 import { LabelPreview } from './label-preview'
 import { PanelToolbar } from './toolbar'
@@ -32,7 +32,7 @@ export function EditorPanel({
   autoFocus,
 }: EditorPanelProps) {
   const headingId = useId()
-  const [sectionRef, width] = useElementWidth<HTMLElement>()
+  const [sectionRef, { width }] = useElementSize<HTMLElement>()
   const { render, isRendering, error } = useLabelRender(panelId)
 
   // Until the first measurement, guess from the page so a lone panel on a

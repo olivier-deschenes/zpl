@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, MouseEvent } from 'react'
 import {
-  IconArrowsHorizontal,
+  IconArrowsMaximize,
   IconGitCompare,
   IconZoomIn,
   IconZoomOut,
@@ -18,7 +18,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '#/components/ui/tooltip'
-import { useElementWidth } from '#/hooks/use-element-width'
+import { useElementSize } from '#/hooks/use-element-size'
 import { DIFF_COLORS, diffInk, rgb } from '#/lib/zpl/diff'
 import { LabelaryError } from '#/lib/zpl/labelary'
 import type { LabelaryLabel } from '#/lib/zpl/labelary'
@@ -36,6 +36,10 @@ const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4]
 const VIEWPORT_PADDING = 24
 /** Between the two renders when comparing side by side. */
 const PAIR_GAP = 16
+/** A figure's caption line and the gap above it. */
+const CAPTION_HEIGHT = 16 + 8
+/** A side-by-side column's title line and the gap below it. */
+const COLUMN_TITLE_HEIGHT = 16 + 6
 
 type Label = RenderedLabel<HTMLCanvasElement>
 type CompareMode = 'side-by-side' | 'difference'
@@ -60,7 +64,7 @@ export function LabelPreview({
     (state) => state.selections[panelId] ?? null,
   )
   const [zoom, setZoom] = useState<number | 'fit'>('fit')
-  const [viewportRef, viewportWidth] = useElementWidth<HTMLDivElement>()
+  const [viewportRef, viewport] = useElementSize<HTMLDivElement>()
   // Off on every load: comparing sends the ZPL to labelary.com.
   const [compare, setCompare] = useState(false)
   const [compareMode, setCompareMode] = useState<CompareMode>('side-by-side')
@@ -73,15 +77,27 @@ export function LabelPreview({
   const shown = mode === 'difference' && labelary ? labelary.local : render
   const labels = shown?.result.labels ?? []
   const widest = Math.max(1, ...labels.map((label) => label.width))
+  const tallest = Math.max(1, ...labels.map((label) => label.height))
   const columns = mode === 'side-by-side' ? 2 : 1
+  const chromeHeight =
+    CAPTION_HEIGHT + (mode === 'side-by-side' ? COLUMN_TITLE_HEIGHT : 0)
+  // Fit shows each label whole, so the pane only scrolls between labels.
+  // Rounded down so a fraction of a pixel never brings in a scrollbar.
   // With nothing to fit, a new empty panel would read "Zoom 60000%".
   const fitScale =
     labels.length === 0
       ? 1
       : Math.max(
           ZOOM_STEPS[0],
-          (viewportWidth - VIEWPORT_PADDING * 2 - PAIR_GAP * (columns - 1)) /
-            (widest * columns),
+          Math.floor(
+            Math.min(
+              (viewport.width -
+                VIEWPORT_PADDING * 2 -
+                PAIR_GAP * (columns - 1)) /
+                (widest * columns),
+              (viewport.height - VIEWPORT_PADDING * 2 - chromeHeight) / tallest,
+            ) * 1000,
+          ) / 1000,
         )
   const scale = zoom === 'fit' ? fitScale : zoom
   const starts = useMemo(() => lineStarts(shown?.source ?? ''), [shown])
@@ -120,7 +136,7 @@ export function LabelPreview({
             onClick={() => setZoom('fit')}
             pressed={zoom === 'fit'}
           >
-            <IconArrowsHorizontal />
+            <IconArrowsMaximize />
           </HeaderButton>
           <Separator orientation="vertical" className="mx-1 h-4" />
           <HeaderButton
