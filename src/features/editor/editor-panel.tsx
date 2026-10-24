@@ -57,7 +57,11 @@ export function EditorPanel({
               <h2 id={headingId} className="truncate text-xs font-medium">
                 {title}
               </h2>
-              <PanelToolbar panelId={panelId} title={title} />
+              <PanelToolbar
+                panelId={panelId}
+                title={title}
+                labelCount={render?.result.labels.length ?? 0}
+              />
             </div>
             <div className="min-h-0 flex-1">
               <ZplEditor

@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useId, useRef, useState } from 'react'
 import {
   IconAdjustmentsHorizontal,
   IconChevronDown,
@@ -40,7 +40,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '#/components/ui/tooltip'
-import { copyBase64, copyZpl, exportPdf, exportPng } from '#/lib/zpl/export'
+import {
+  DEFAULT_FILE_NAME,
+  copyBase64,
+  copyZpl,
+  exportAs,
+} from '#/lib/zpl/export'
+import type { ExportFormat } from '#/lib/zpl/export'
 import {
   DEFAULT_SETTINGS,
   DENSITIES,
@@ -49,6 +55,7 @@ import {
 } from '#/lib/zpl/render'
 import type { PrintDensity } from '#/lib/zpl/render'
 import { m } from '#/paraglide/messages'
+import { DownloadDialog } from './download-dialog'
 import {
   MAX_PANELS,
   duplicatePanel,
@@ -56,6 +63,7 @@ import {
   insertPanel,
   removePanel,
   selectPanel,
+  setFileName,
   setSettings,
 } from './store'
 
@@ -63,9 +71,15 @@ interface PanelToolbarProps {
   panelId: string
   /** The panel's display name, used in the close notice. */
   title: string
+  /** Labels in the panel's current preview. */
+  labelCount: number
 }
 
-export function PanelToolbar({ panelId, title }: PanelToolbarProps) {
+export function PanelToolbar({
+  panelId,
+  title,
+  labelCount,
+}: PanelToolbarProps) {
   const panelCount = useSelector(editorStore, (state) => state.panels.length)
 
   const close = () => {
@@ -83,7 +97,7 @@ export function PanelToolbar({ panelId, title }: PanelToolbarProps) {
   return (
     <div className="flex shrink-0 items-center gap-1">
       <SettingsPopover panelId={panelId} />
-      <ExportMenu panelId={panelId} />
+      <ExportMenu panelId={panelId} labelCount={labelCount} />
       <IconButton
         label={m.duplicate_panel()}
         onClick={() => duplicatePanel(panelId)}
@@ -267,16 +281,60 @@ function SettingsForm({ panelId }: { panelId: string }) {
   )
 }
 
-function ExportMenu({ panelId }: { panelId: string }) {
+const DOWNLOADS: ReadonlyArray<{ format: ExportFormat; label: () => string }> =
+  [
+    { format: 'pdf', label: m.export_pdf },
+    { format: 'png', label: m.export_png },
+    { format: 'zpl', label: m.export_zpl },
+  ]
+
+function ExportMenu({
+  panelId,
+  labelCount,
+}: {
+  panelId: string
+  labelCount: number
+}) {
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [dialog, setDialog] = useState({
+    /** Bumped per prompt so each one starts fresh, even mid close animation. */
+    id: 0,
+    open: false,
+    format: 'pdf' as ExportFormat,
+    defaultName: DEFAULT_FILE_NAME,
+  })
   // Exports read the live source, not the debounced one the preview shows.
   const livePanel = () => selectPanel(editorStore.state, panelId)
 
-  const download = async (exporter: typeof exportPng, done: string) => {
+  const promptFileName = (format: ExportFormat) => {
+    const { panels } = editorStore.state
+    const index = panels.findIndex((panel) => panel.id === panelId)
+    // Number the default once there are several panels, so their
+    // downloads don't collide.
+    const fallback =
+      panels.length > 1
+        ? `${DEFAULT_FILE_NAME}-${index + 1}`
+        : DEFAULT_FILE_NAME
+    setDialog((current) => ({
+      id: current.id + 1,
+      open: true,
+      format,
+      defaultName: livePanel()?.fileName ?? fallback,
+    }))
+  }
+
+  const download = async (format: ExportFormat, baseName: string) => {
     const panel = livePanel()
     if (!panel) return
+    setFileName(panelId, baseName)
     try {
-      await exporter(panel.source, panel.settings)
-      toast.success(done)
+      const name = await exportAs(
+        format,
+        panel.source,
+        panel.settings,
+        baseName,
+      )
+      toast.success(m.downloaded({ name }))
     } catch (error) {
       toast.error(
         m.export_failed({
@@ -296,34 +354,52 @@ function ExportMenu({ panelId }: { panelId: string }) {
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm">
-          {m.export()}
-          <IconChevronDown data-icon="inline-end" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44">
-        <DropdownMenuItem
-          onSelect={() => void download(exportPng, m.exported_png())}
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button ref={triggerRef} variant="outline" size="sm">
+            {m.export()}
+            <IconChevronDown data-icon="inline-end" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          className="w-44"
+          // The file name dialog takes focus; handing it back to the
+          // trigger here would steal it.
+          onCloseAutoFocus={(event) => {
+            if (dialog.open) event.preventDefault()
+          }}
         >
-          {m.export_png()}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => void download(exportPdf, m.exported_pdf())}
-        >
-          {m.export_pdf()}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => void copy(copyZpl, m.copied_zpl())}>
-          {m.copy_zpl()}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => void copy(copyBase64, m.copied_base64())}
-        >
-          {m.copy_base64()}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          {DOWNLOADS.map(({ format, label }) => (
+            <DropdownMenuItem
+              key={format}
+              onSelect={() => promptFileName(format)}
+            >
+              {label()}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => void copy(copyZpl, m.copied_zpl())}>
+            {m.copy_zpl()}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => void copy(copyBase64, m.copied_base64())}
+          >
+            {m.copy_base64()}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <DownloadDialog
+        key={dialog.id}
+        open={dialog.open}
+        onOpenChange={(open) => setDialog((current) => ({ ...current, open }))}
+        format={dialog.format}
+        defaultName={dialog.defaultName}
+        labelCount={labelCount}
+        onDownload={(baseName) => void download(dialog.format, baseName)}
+        returnFocusRef={triggerRef}
+      />
+    </>
   )
 }

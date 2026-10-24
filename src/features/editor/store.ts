@@ -16,6 +16,8 @@ export interface Panel {
   id: string
   source: string
   settings: LabelSettings
+  /** The name last used to download this panel, without an extension. */
+  fileName?: string
 }
 
 /** Which renderer draws the preview when not comparing. */
@@ -76,6 +78,12 @@ export function setSettings(id: string, settings: Partial<LabelSettings>) {
     ...panel,
     settings: { ...panel.settings, ...settings },
   }))
+}
+
+export function setFileName(id: string, fileName: string) {
+  updatePanel(id, (panel) =>
+    panel.fileName === fileName ? panel : { ...panel, fileName },
+  )
 }
 
 export function setPreviewSource(previewSource: PreviewSource) {
@@ -212,6 +220,10 @@ function sanitizePanel(value: Partial<Panel> | null): Panel {
     id: typeof value?.id === 'string' && value.id ? value.id : createPanelId(),
     source: typeof value?.source === 'string' ? value.source : SAMPLE_LABEL,
     settings: sanitizeSettings(value?.settings),
+    fileName:
+      typeof value?.fileName === 'string' && value.fileName
+        ? value.fileName
+        : undefined,
   }
 }
 
