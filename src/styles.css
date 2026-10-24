@@ -148,6 +148,8 @@
   html,
   body {
     height: 100%;
+    /* The app fills the window, so the page never rubber-bands. */
+    overscroll-behavior: none;
   }
   html {
     @apply font-sans;

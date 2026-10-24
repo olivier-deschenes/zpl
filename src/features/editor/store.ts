@@ -108,11 +108,13 @@ export function setSelection(id: string, selection: SourceSelection | null) {
   )
 }
 
-/** Adds an empty panel at the end, sized like the last one. */
-export function addPanel(): string | undefined {
-  const last = editorStore.state.panels.at(-1)
-  const panel = createPanel('', last?.settings ?? DEFAULT_SETTINGS)
-  return insertPanel(panel, editorStore.state.panels.length)
+/** Adds an empty panel right after another one, sized like it. */
+export function addPanel(afterId: string): string | undefined {
+  const { panels } = editorStore.state
+  const index = panels.findIndex((panel) => panel.id === afterId)
+  if (index === -1) return undefined
+  const panel = createPanel('', panels[index].settings)
+  return insertPanel(panel, index + 1)
 }
 
 /** Copies a panel's source and settings into a new panel right after it. */

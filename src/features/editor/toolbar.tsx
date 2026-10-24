@@ -3,6 +3,7 @@ import {
   IconAdjustmentsHorizontal,
   IconChevronDown,
   IconCopy,
+  IconPlus,
   IconX,
 } from '@tabler/icons-react'
 import { useForm } from '@tanstack/react-form'
@@ -59,6 +60,7 @@ import { DownloadDialog } from './download-dialog'
 import { useCopyShareLink } from './share-link'
 import {
   MAX_PANELS,
+  addPanel,
   duplicatePanel,
   editorStore,
   insertPanel,
@@ -99,6 +101,13 @@ export function PanelToolbar({
     <div className="flex shrink-0 items-center gap-1">
       <SettingsPopover panelId={panelId} />
       <ExportMenu panelId={panelId} labelCount={labelCount} />
+      <IconButton
+        label={m.add_panel()}
+        onClick={() => addPanel(panelId)}
+        disabled={panelCount >= MAX_PANELS}
+      >
+        <IconPlus />
+      </IconButton>
       <IconButton
         label={m.duplicate_panel()}
         onClick={() => duplicatePanel(panelId)}

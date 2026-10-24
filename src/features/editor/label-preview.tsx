@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, MouseEvent } from 'react'
 import {
   IconArrowsMaximize,
+  IconCloud,
   IconGitCompare,
   IconZoomIn,
   IconZoomOut,
@@ -35,7 +36,12 @@ import type { HighlightRegion, RenderedLabel } from '#/lib/zpl/render'
 import { m } from '#/paraglide/messages'
 import { getLocale } from '#/paraglide/runtime'
 import { lineAt, lineStarts, uniqueDiagnostics } from './diagnostics'
-import { editorStore, selectPanel, setSelection } from './store'
+import {
+  editorStore,
+  selectPanel,
+  setPreviewSource,
+  setSelection,
+} from './store'
 import type { PreviewSource, SourceSelection } from './store'
 import { useOtherPanelRender } from './use-label-render'
 import type { LabelRender } from './use-label-render'
@@ -225,6 +231,19 @@ export function LabelPreview({
             <IconArrowsMaximize />
           </HeaderButton>
           <Separator orientation="vertical" className="mx-1 h-4" />
+          {/* Applies to every panel, like the saved setting behind it. */}
+          <HeaderButton
+            label={m.preview_labelary()}
+            tooltip={m.preview_labelary_hint()}
+            onClick={() =>
+              setPreviewSource(
+                previewSource === 'labelary' ? 'local' : 'labelary',
+              )
+            }
+            pressed={previewSource === 'labelary'}
+          >
+            <IconCloud />
+          </HeaderButton>
           <CompareMenu
             target={target}
             panels={panelIds
@@ -246,7 +265,7 @@ export function LabelPreview({
 
       <div
         ref={viewportRef}
-        className="min-h-0 flex-1 overflow-auto bg-muted"
+        className="min-h-0 flex-1 overflow-auto overscroll-none bg-muted"
         onClick={(event) => {
           if (event.target === event.currentTarget) {
             setSelection(panelId, null)
@@ -1002,11 +1021,14 @@ function ComparisonStatus({
 
 function HeaderButton({
   label,
+  tooltip = label,
   onClick,
   pressed,
   children,
 }: {
   label: string
+  /** Longer text for the tooltip; the label still names the button. */
+  tooltip?: string
   onClick: () => void
   pressed?: boolean
   children: React.ReactNode
@@ -1025,7 +1047,7 @@ function HeaderButton({
           {children}
         </Button>
       </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
+      <TooltipContent>{tooltip}</TooltipContent>
     </Tooltip>
   )
 }

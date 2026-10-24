@@ -138,7 +138,11 @@ const editorTheme = EditorView.theme({
     backgroundColor: 'var(--background)',
   },
   '&.cm-focused': { outline: 'none' },
-  '.cm-scroller': { fontFamily: MONO_FONT, lineHeight: '1.6' },
+  '.cm-scroller': {
+    fontFamily: MONO_FONT,
+    lineHeight: '1.6',
+    overscrollBehavior: 'none',
+  },
   '.cm-content': { caretColor: 'var(--foreground)' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--foreground)' },
   '.cm-gutters': {
