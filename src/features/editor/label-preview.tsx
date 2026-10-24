@@ -2,7 +2,6 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, MouseEvent } from 'react'
 import {
   IconArrowsMaximize,
-  IconCloud,
   IconGitCompare,
   IconZoomIn,
   IconZoomOut,
@@ -210,9 +209,33 @@ export function LabelPreview({
       className="flex h-full min-w-0 flex-col"
     >
       <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b px-3">
-        <h3 id={headingId} className="truncate text-xs font-medium">
+        <h3 id={headingId} className="sr-only">
           {m.preview_label()}
         </h3>
+        {/* Applies to every panel, like the saved setting behind it. */}
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          size="sm"
+          spacing={0}
+          value={previewSource}
+          // Radix reports an empty value when the pressed item is pressed again.
+          onValueChange={(value) => {
+            if (value) setPreviewSource(value as PreviewSource)
+          }}
+          aria-label={m.preview_source()}
+        >
+          <ToggleGroupItem value="local">{m.preview_live()}</ToggleGroupItem>
+          {/* The tooltip sits inside so its data-state doesn't replace the item's. */}
+          <ToggleGroupItem value="labelary">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>{m.preview_api()}</span>
+              </TooltipTrigger>
+              <TooltipContent>{m.preview_api_hint()}</TooltipContent>
+            </Tooltip>
+          </ToggleGroupItem>
+        </ToggleGroup>
         <div className="flex items-center gap-1">
           <span className="mr-1 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
             {m.zoom_level({ percent: Math.round(scale * 100) })}
@@ -231,19 +254,6 @@ export function LabelPreview({
             <IconArrowsMaximize />
           </HeaderButton>
           <Separator orientation="vertical" className="mx-1 h-4" />
-          {/* Applies to every panel, like the saved setting behind it. */}
-          <HeaderButton
-            label={m.preview_labelary()}
-            tooltip={m.preview_labelary_hint()}
-            onClick={() =>
-              setPreviewSource(
-                previewSource === 'labelary' ? 'local' : 'labelary',
-              )
-            }
-            pressed={previewSource === 'labelary'}
-          >
-            <IconCloud />
-          </HeaderButton>
           <CompareMenu
             target={target}
             panels={panelIds
