@@ -74,6 +74,8 @@
   "copy_zpl": "Copy ZPL",
   "copy_base64": "Copy as base64",
   "copy_share_link": "Copy share link",
+  "explain": "Explain",
+  "explain_hint": "Show what each line does in plain words. Hover any command to see what its values mean.",
   "download_title": "Download {format}",
   "download_hint": "Press Enter to download, or type a new name first.",
   "download_zip_hint": "{count} labels download together as a zip.",

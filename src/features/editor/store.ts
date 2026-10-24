@@ -31,6 +31,8 @@ export type PreviewSource = 'local' | 'labelary'
 export interface EditorState {
   panels: Panel[]
   previewSource: PreviewSource
+  /** Show plain-language notes beside the code. */
+  explain: boolean
   /**
    * Keyed by panel id. Kept apart from `panels` because it changes on every
    * cursor move and is never saved.
@@ -53,16 +55,20 @@ let persisted = editorStore.state
 
 editorStore.subscribe((state) => {
   // Selection changes on every cursor move; only write when the rest does.
-  const { panels, previewSource } = state
+  const { panels, previewSource, explain } = state
   if (
     panels === persisted.panels &&
-    previewSource === persisted.previewSource
+    previewSource === persisted.previewSource &&
+    explain === persisted.explain
   ) {
     return
   }
   persisted = state
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ panels, previewSource }))
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ panels, previewSource, explain }),
+    )
   } catch {
     // Storage can be full or blocked (private mode); the editor still works.
   }
@@ -94,6 +100,12 @@ export function setFileName(id: string, fileName: string) {
 export function setPreviewSource(previewSource: PreviewSource) {
   editorStore.setState((state) =>
     state.previewSource === previewSource ? state : { ...state, previewSource },
+  )
+}
+
+export function setExplain(explain: boolean) {
+  editorStore.setState((state) =>
+    state.explain === explain ? state : { ...state, explain },
   )
 }
 
@@ -228,19 +240,24 @@ function sameSelection(a: SourceSelection | null, b: SourceSelection | null) {
   return a.from === b.from && a.to === b.to && a.origin === b.origin
 }
 
-function loadPersisted(): Pick<EditorState, 'panels' | 'previewSource'> {
+function loadPersisted(): Pick<
+  EditorState,
+  'panels' | 'previewSource' | 'explain'
+> {
   const fallback = {
     panels: [createPanel(SAMPLE_LABEL, DEFAULT_SETTINGS)],
     previewSource: 'local' as const,
+    explain: true,
   }
   if (typeof localStorage === 'undefined') return fallback
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
-      const { panels, previewSource } = JSON.parse(raw) as {
+      const { panels, previewSource, explain } = JSON.parse(raw) as {
         panels?: unknown
         previewSource?: unknown
+        explain?: unknown
       }
       return {
         panels:
@@ -250,6 +267,7 @@ function loadPersisted(): Pick<EditorState, 'panels' | 'previewSource'> {
                 .map((panel: Partial<Panel> | null) => sanitizePanel(panel))
             : fallback.panels,
         previewSource: previewSource === 'labelary' ? 'labelary' : 'local',
+        explain: typeof explain === 'boolean' ? explain : fallback.explain,
       }
     }
 

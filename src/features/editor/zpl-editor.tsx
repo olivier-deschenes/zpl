@@ -1,18 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
 import { lintGutter, setDiagnostics } from '@codemirror/lint'
 import type { Diagnostic } from '@codemirror/lint'
-import { EditorSelection } from '@codemirror/state'
+import { Compartment, EditorSelection } from '@codemirror/state'
+import type { Text } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { useSelector } from '@tanstack/react-store'
 import CodeMirror from '@uiw/react-codemirror'
 
 import { decodeBase64Zpl } from '#/lib/zpl/base64'
+import { DEFAULT_SETTINGS, dpiFor } from '#/lib/zpl/render'
 import type { ZplDiagnostic } from '#/lib/zpl/render'
 import { m } from '#/paraglide/messages'
 import { uniqueDiagnostics } from './diagnostics'
 import { editorStore, selectPanel, setSelection, setSource } from './store'
 import type { LabelRender } from './use-label-render'
-import { fromPreview, setHighlight, zpl } from './zpl-language'
+import { fromPreview, setHighlight, zpl, zplHelp } from './zpl-language'
 
 /** Pasted or dropped base64 is decoded to ZPL before it reaches the document. */
 const base64Input = EditorView.domEventHandlers({
@@ -88,19 +90,32 @@ export function ZplEditor({ panelId, render, autoFocus }: ZplEditorProps) {
     editorStore,
     (state) => state.selections[panelId] ?? null,
   )
+  const dpi = useSelector(editorStore, (state) =>
+    dpiFor(selectPanel(state, panelId)?.settings.dpmm ?? DEFAULT_SETTINGS.dpmm),
+  )
+  const explain = useSelector(editorStore, (state) => state.explain)
   const [view, setView] = useState<EditorView | null>(null)
+  // Holds the explanations, which follow the panel's density and the toggle.
+  const [help] = useState(() => new Compartment())
 
   const extensions = useMemo(
     () => [
       zpl(),
+      // Filled in by the effect below once the editor exists.
+      help.of([]),
       lintGutter(),
       EditorView.lineWrapping,
       EditorView.contentAttributes.of({ 'aria-label': m.editor_label() }),
       base64Input,
       selectionSync(panelId),
     ],
-    [panelId],
+    [panelId, help],
   )
+
+  // Runs again when the extensions are swapped, which empties the compartment.
+  useEffect(() => {
+    view?.dispatch({ effects: help.reconfigure(zplHelp({ dpi, explain })) })
+  }, [view, help, extensions, dpi, explain])
 
   // Follow clicks in the preview: highlight the field's code and scroll to it.
   useEffect(() => {
@@ -132,7 +147,7 @@ export function ZplEditor({ panelId, render, autoFocus }: ZplEditorProps) {
     view.dispatch(
       setDiagnostics(
         view.state,
-        toLintDiagnostics(render.result.diagnostics, view.state.doc.length),
+        toLintDiagnostics(render.result.diagnostics, view.state.doc),
       ),
     )
   }, [view, render])
@@ -154,12 +169,15 @@ export function ZplEditor({ panelId, render, autoFocus }: ZplEditorProps) {
 
 function toLintDiagnostics(
   diagnostics: readonly ZplDiagnostic[],
-  length: number,
+  doc: Text,
 ): Diagnostic[] {
   return uniqueDiagnostics(diagnostics).flatMap((diagnostic) => {
     if (!diagnostic.span) return []
-    const from = Math.min(diagnostic.span.start, length)
-    const to = Math.min(Math.max(diagnostic.span.end, from), length)
+    const from = Math.min(diagnostic.span.start, doc.length)
+    const end = Math.min(Math.max(diagnostic.span.end, from), doc.length)
+    // Command spans run on through the line break; stopping before it keeps
+    // the underline off the explanation at the end of the line.
+    const to = from + doc.sliceString(from, end).trimEnd().length
     return [
       {
         from,
