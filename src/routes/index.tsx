@@ -1,16 +1,28 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useId, useState } from 'react'
 import { IconPlus } from '@tabler/icons-react'
 import { createFileRoute } from '@tanstack/react-router'
 import { shallow, useSelector } from '@tanstack/react-store'
 
 import { Button } from '#/components/ui/button'
+import { Label } from '#/components/ui/label'
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from '#/components/ui/resizable'
+import { Switch } from '#/components/ui/switch'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '#/components/ui/tooltip'
 import { EditorPanel } from '#/features/editor/editor-panel'
-import { MAX_PANELS, addPanel, editorStore } from '#/features/editor/store'
+import {
+  MAX_PANELS,
+  addPanel,
+  editorStore,
+  setPreviewSource,
+} from '#/features/editor/store'
 import { useMediaQuery } from '#/hooks/use-media-query'
 import { m } from '#/paraglide/messages'
 
@@ -47,14 +59,17 @@ function EditorPage() {
     <div className="flex h-dvh flex-col">
       <header className="flex h-12 shrink-0 items-center justify-between gap-4 border-b px-4">
         <h1 className="text-sm font-semibold">{m.app_title()}</h1>
-        <Button
-          variant="outline"
-          onClick={() => addPanel()}
-          disabled={panelIds.length >= MAX_PANELS}
-        >
-          <IconPlus data-icon="inline-start" />
-          {m.add_panel()}
-        </Button>
+        <div className="flex items-center gap-4">
+          <PreviewSourceSwitch />
+          <Button
+            variant="outline"
+            onClick={() => addPanel()}
+            disabled={panelIds.length >= MAX_PANELS}
+          >
+            <IconPlus data-icon="inline-start" />
+            {m.add_panel()}
+          </Button>
+        </div>
       </header>
       <main className="min-h-0 flex-1">
         {stacked ? (
@@ -83,5 +98,33 @@ function EditorPage() {
         )}
       </main>
     </div>
+  )
+}
+
+function PreviewSourceSwitch() {
+  const id = useId()
+  const hintId = useId()
+  const previewSource = useSelector(editorStore, (state) => state.previewSource)
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="flex items-center gap-2">
+          <Switch
+            id={id}
+            size="sm"
+            checked={previewSource === 'labelary'}
+            onCheckedChange={(checked) =>
+              setPreviewSource(checked ? 'labelary' : 'local')
+            }
+            aria-describedby={hintId}
+          />
+          <Label htmlFor={id} className="whitespace-nowrap">
+            {m.preview_labelary()}
+          </Label>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent id={hintId}>{m.preview_labelary_hint()}</TooltipContent>
+    </Tooltip>
   )
 }

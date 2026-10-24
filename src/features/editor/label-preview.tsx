@@ -28,7 +28,7 @@ import { m } from '#/paraglide/messages'
 import { getLocale } from '#/paraglide/runtime'
 import { lineAt, lineStarts, uniqueDiagnostics } from './diagnostics'
 import { editorStore, selectPanel, setSelection } from './store'
-import type { SourceSelection } from './store'
+import type { PreviewSource, SourceSelection } from './store'
 import type { LabelRender } from './use-label-render'
 import { useLabelaryRender } from './use-labelary-render'
 
@@ -43,6 +43,8 @@ const COLUMN_TITLE_HEIGHT = 16 + 6
 
 type Label = RenderedLabel<HTMLCanvasElement>
 type CompareMode = 'side-by-side' | 'difference'
+/** A single render from either source, or the two compared. */
+type View = PreviewSource | CompareMode
 type Comparison = ReturnType<typeof useLabelaryRender>
 
 interface LabelPreviewProps {
@@ -68,19 +70,24 @@ export function LabelPreview({
   // Off on every load: comparing sends the ZPL to labelary.com.
   const [compare, setCompare] = useState(false)
   const [compareMode, setCompareMode] = useState<CompareMode>('side-by-side')
-  const comparison = useLabelaryRender(render, compare)
+  const previewSource = useSelector(editorStore, (state) => state.previewSource)
+  const view: View = compare ? compareMode : previewSource
+  const comparison = useLabelaryRender(render, view !== 'local')
   const { labelary } = comparison
-  const mode = compare ? compareMode : null
 
-  // The difference view keeps to the local render Labelary's labels were
-  // fetched for, so the two always line up while a newer one is on its way.
-  const shown = mode === 'difference' && labelary ? labelary.local : render
+  // Views drawing Labelary over the local render's regions keep to the
+  // render its labels were fetched for, so the two always line up while a
+  // newer one is on its way.
+  const shown =
+    (view === 'difference' || view === 'labelary') && labelary
+      ? labelary.local
+      : render
   const labels = shown?.result.labels ?? []
   const widest = Math.max(1, ...labels.map((label) => label.width))
   const tallest = Math.max(1, ...labels.map((label) => label.height))
-  const columns = mode === 'side-by-side' ? 2 : 1
+  const columns = view === 'side-by-side' ? 2 : 1
   const chromeHeight =
-    CAPTION_HEIGHT + (mode === 'side-by-side' ? COLUMN_TITLE_HEIGHT : 0)
+    CAPTION_HEIGHT + (view === 'side-by-side' ? COLUMN_TITLE_HEIGHT : 0)
   // Fit shows each label whole, so the pane only scrolls between labels.
   // Rounded down so a fraction of a pixel never brings in a scrollbar.
   // With nothing to fit, a new empty panel would read "Zoom 60000%".
@@ -149,7 +156,9 @@ export function LabelPreview({
         </div>
       </div>
 
-      {mode && <CompareBar mode={mode} onModeChange={setCompareMode} />}
+      {compare && (
+        <CompareBar mode={compareMode} onModeChange={setCompareMode} />
+      )}
 
       <div
         ref={viewportRef}
@@ -172,7 +181,7 @@ export function LabelPreview({
             {labels.map((label, index) => (
               <LabelFigure
                 key={index}
-                mode={mode}
+                view={view}
                 caption={m.label_caption({
                   index: index + 1,
                   count: labels.length,
@@ -196,7 +205,7 @@ export function LabelPreview({
         render={render}
         isRendering={isRendering}
         error={error}
-        comparison={compare ? comparison : undefined}
+        comparison={view === 'local' ? undefined : comparison}
       />
     </section>
   )
@@ -266,7 +275,7 @@ function DiffLegend() {
 }
 
 interface LabelFigureProps extends LabelSurfaceProps {
-  mode: CompareMode | null
+  view: View
   caption: string
   remote: LabelaryLabel | undefined
   /** The Labelary label is for older source and is being replaced. */
@@ -276,14 +285,14 @@ interface LabelFigureProps extends LabelSurfaceProps {
 }
 
 function LabelFigure({
-  mode,
+  view,
   caption,
   remote,
   remoteStale,
   remotePlaceholder,
   ...surface
 }: LabelFigureProps) {
-  if (mode === 'difference' && remote) {
+  if (view === 'difference' && remote) {
     return (
       <DiffFigure
         caption={caption}
@@ -295,9 +304,19 @@ function LabelFigure({
   }
 
   const { label, scale } = surface
+  const remoteClassName = cn('transition-opacity', remoteStale && 'opacity-50')
+  const placeholder = (
+    <div
+      className="flex items-center justify-center border border-dashed p-4 text-center text-xs text-muted-foreground"
+      style={{ width: label.width * scale, height: label.height * scale }}
+    >
+      {remotePlaceholder}
+    </div>
+  )
+
   return (
     <figure className="flex flex-col items-center gap-2">
-      {mode === 'side-by-side' ? (
+      {view === 'side-by-side' ? (
         <div className="flex items-start" style={{ gap: PAIR_GAP }}>
           <RenderColumn title={m.compare_editor()}>
             <LabelSurface {...surface} />
@@ -309,29 +328,34 @@ function LabelFigure({
                 width={remote.width}
                 height={remote.height}
                 scale={scale}
-                className={cn(
-                  'transition-opacity',
-                  remoteStale && 'opacity-50',
-                )}
+                className={remoteClassName}
               />
             ) : (
-              <div
-                className="flex items-center justify-center border border-dashed p-4 text-center text-xs text-muted-foreground"
-                style={{
-                  width: label.width * scale,
-                  height: label.height * scale,
-                }}
-              >
-                {remotePlaceholder}
-              </div>
+              placeholder
             )}
           </RenderColumn>
         </div>
+      ) : view === 'labelary' ? (
+        // Labelary's label is fetched dot for dot at the local label's size,
+        // so the local render's regions still line up for click-to-code.
+        remote ? (
+          <LabelSurface
+            {...surface}
+            image={remote.canvas}
+            className={remoteClassName}
+          />
+        ) : (
+          placeholder
+        )
       ) : (
         <LabelSurface {...surface} />
       )}
       <figcaption className="text-xs text-muted-foreground">
-        {mode === 'difference' ? `${caption} · ${remotePlaceholder}` : caption}
+        {view === 'difference'
+          ? `${caption} · ${remotePlaceholder}`
+          : view === 'labelary'
+            ? `${caption} · ${m.compare_labelary_title()}`
+            : caption}
       </figcaption>
     </figure>
   )

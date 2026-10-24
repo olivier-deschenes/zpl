@@ -18,8 +18,12 @@ export interface Panel {
   settings: LabelSettings
 }
 
+/** Which renderer draws the preview when not comparing. */
+export type PreviewSource = 'local' | 'labelary'
+
 export interface EditorState {
   panels: Panel[]
+  previewSource: PreviewSource
   /**
    * Keyed by panel id. Kept apart from `panels` because it changes on every
    * cursor move and is never saved.
@@ -34,18 +38,24 @@ const STORAGE_KEY = 'zpl-editor:v2'
 const LEGACY_STORAGE_KEY = 'zpl-editor:v1'
 
 export const editorStore = createStore<EditorState>({
-  panels: loadPersisted(),
+  ...loadPersisted(),
   selections: {},
 })
 
-let persisted = editorStore.state.panels
+let persisted = editorStore.state
 
-editorStore.subscribe(({ panels }) => {
-  // Selection changes on every cursor move; only write when panels change.
-  if (panels === persisted) return
-  persisted = panels
+editorStore.subscribe((state) => {
+  // Selection changes on every cursor move; only write when the rest does.
+  const { panels, previewSource } = state
+  if (
+    panels === persisted.panels &&
+    previewSource === persisted.previewSource
+  ) {
+    return
+  }
+  persisted = state
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ panels }))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ panels, previewSource }))
   } catch {
     // Storage can be full or blocked (private mode); the editor still works.
   }
@@ -66,6 +76,12 @@ export function setSettings(id: string, settings: Partial<LabelSettings>) {
     ...panel,
     settings: { ...panel.settings, ...settings },
   }))
+}
+
+export function setPreviewSource(previewSource: PreviewSource) {
+  editorStore.setState((state) =>
+    state.previewSource === previewSource ? state : { ...state, previewSource },
+  )
 }
 
 export function setSelection(id: string, selection: SourceSelection | null) {
@@ -122,6 +138,7 @@ export function removePanel(id: string) {
   editorStore.setState((state) => {
     const { [id]: _removed, ...selections } = state.selections
     return {
+      ...state,
       panels: state.panels.filter((item) => item.id !== id),
       selections,
     }
@@ -156,22 +173,35 @@ function sameSelection(a: SourceSelection | null, b: SourceSelection | null) {
   return a.from === b.from && a.to === b.to && a.origin === b.origin
 }
 
-function loadPersisted(): Panel[] {
-  const fallback = [createPanel(SAMPLE_LABEL, DEFAULT_SETTINGS)]
+function loadPersisted(): Pick<EditorState, 'panels' | 'previewSource'> {
+  const fallback = {
+    panels: [createPanel(SAMPLE_LABEL, DEFAULT_SETTINGS)],
+    previewSource: 'local' as const,
+  }
   if (typeof localStorage === 'undefined') return fallback
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
-      const { panels } = JSON.parse(raw) as { panels?: unknown }
-      if (!Array.isArray(panels) || panels.length === 0) return fallback
-      return panels
-        .slice(0, MAX_PANELS)
-        .map((panel: Partial<Panel> | null) => sanitizePanel(panel))
+      const { panels, previewSource } = JSON.parse(raw) as {
+        panels?: unknown
+        previewSource?: unknown
+      }
+      return {
+        panels:
+          Array.isArray(panels) && panels.length > 0
+            ? panels
+                .slice(0, MAX_PANELS)
+                .map((panel: Partial<Panel> | null) => sanitizePanel(panel))
+            : fallback.panels,
+        previewSource: previewSource === 'labelary' ? 'labelary' : 'local',
+      }
     }
 
     const legacy = localStorage.getItem(LEGACY_STORAGE_KEY)
-    return legacy ? [sanitizePanel(JSON.parse(legacy))] : fallback
+    return legacy
+      ? { ...fallback, panels: [sanitizePanel(JSON.parse(legacy))] }
+      : fallback
   } catch {
     return fallback
   }
