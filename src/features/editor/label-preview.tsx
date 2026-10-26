@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   IconAlertTriangle,
   IconChevronDown,
+  IconDots,
   IconGitCompare,
   IconZoomIn,
   IconZoomOut,
@@ -12,6 +13,7 @@ import { cn } from 'cn'
 import { Button } from '#/components/ui/button'
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -42,7 +44,7 @@ import type { LabelSettings, ZplSize } from '#/lib/zpl/settings'
 import { m } from '#/paraglide/messages'
 import { getLocale } from '#/paraglide/runtime'
 import { SettingsPopover } from './settings-popover'
-import { editorStore, selectPanel, setSettings } from './store'
+import { editorStore, selectPanel, setExplain, setSettings } from './store'
 import { useOtherPanelRender } from './use-label-render'
 import type { LabelRender } from './use-label-render'
 
@@ -223,6 +225,7 @@ export function LabelPreview({
           onTargetChange={setCompareWith}
         />
         <ZoomMenu zoom={zoom} scale={scale} onZoomChange={setZoom} />
+        <OptionsMenu />
       </StatusLine>
     </section>
   )
@@ -353,6 +356,43 @@ function ZoomMenu({
     </DropdownMenu>
   )
 }
+/** Editor options that apply to every panel, like the saved settings behind them. */
+function OptionsMenu() {
+  const explain = useSelector(editorStore, (state) => state.explain)
+
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={m.options()}
+              className="text-muted-foreground"
+            >
+              <IconDots />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{m.options()}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent side="top" align="end" className="w-64">
+        <DropdownMenuCheckboxItem
+          checked={explain}
+          onCheckedChange={setExplain}
+          className="flex-col items-start gap-0.5"
+        >
+          {m.explain()}
+          <span className="text-xs text-muted-foreground">
+            {m.explain_hint()}
+          </span>
+        </DropdownMenuCheckboxItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 function CompareBar({
   mode,
   onModeChange,

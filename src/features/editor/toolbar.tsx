@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react'
 import {
-  IconBulb,
   IconChevronDown,
   IconCopy,
   IconDots,
@@ -18,7 +17,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '#/components/ui/dropdown-menu'
-import { Toggle } from '#/components/ui/toggle'
 import {
   Tooltip,
   TooltipContent,
@@ -41,7 +39,6 @@ import {
   editorStore,
   removePanel,
   selectPanel,
-  setExplain,
   setFileName,
 } from './store'
 import { labelRenderQuery } from './use-label-render'
@@ -55,32 +52,9 @@ interface PanelToolbarProps {
 export function PanelToolbar({ panelId, labelCount }: PanelToolbarProps) {
   return (
     <div className="flex shrink-0 items-center gap-1">
-      <ExplainToggle />
       <ExportMenu panelId={panelId} labelCount={labelCount} />
       <PanelMenu panelId={panelId} />
     </div>
-  )
-}
-
-/** Applies to every panel, like the saved setting behind it. */
-function ExplainToggle() {
-  const explain = useSelector(editorStore, (state) => state.explain)
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Toggle
-          variant="outline"
-          size="sm"
-          pressed={explain}
-          onPressedChange={setExplain}
-        >
-          <IconBulb />
-          {m.explain()}
-        </Toggle>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-60">{m.explain_hint()}</TooltipContent>
-    </Tooltip>
   )
 }
 
