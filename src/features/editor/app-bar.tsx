@@ -1,4 +1,9 @@
-import { IconChevronDown, IconGitCompare, IconPlus } from '@tabler/icons-react'
+import {
+  IconChevronDown,
+  IconGitCompare,
+  IconPlus,
+  IconZoomScan,
+} from '@tabler/icons-react'
 import { shallow, useSelector } from '@tanstack/react-store'
 
 import { Button } from '#/components/ui/button'
@@ -18,7 +23,13 @@ import {
   TooltipTrigger,
 } from '#/components/ui/tooltip'
 import { m } from '#/paraglide/messages'
-import { MAX_PANELS, addPanel, editorStore, setExplain } from './store'
+import {
+  MAX_PANELS,
+  addPanel,
+  editorStore,
+  setExplain,
+  setSyncZoom,
+} from './store'
 
 /** Two panels to compare, in page order. */
 export type ComparePair = readonly [string, string]
@@ -48,6 +59,7 @@ export function AppBar({ compare, onCompareChange }: AppBarProps) {
       </h1>
       <div className="ml-auto flex items-center gap-1">
         <ExplainToggle />
+        <SyncZoomToggle />
         <CompareControl compare={compare} onCompareChange={onCompareChange} />
         <Separator orientation="vertical" className="mx-1 my-3" />
         <AddPanelButton />
@@ -72,6 +84,30 @@ function ExplainToggle() {
         </Toggle>
       </TooltipTrigger>
       <TooltipContent className="max-w-64">{m.explain_hint()}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+/** Only shown once there is more than one preview to keep in step. */
+function SyncZoomToggle() {
+  const syncZoom = useSelector(editorStore, (state) => state.syncZoom)
+  const several = useSelector(editorStore, (state) => state.panels.length > 1)
+  if (!several) return null
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Toggle
+          variant="outline"
+          size="sm"
+          pressed={syncZoom}
+          onPressedChange={setSyncZoom}
+        >
+          <IconZoomScan />
+          <span className="max-sm:sr-only">{m.sync_zoom()}</span>
+        </Toggle>
+      </TooltipTrigger>
+      <TooltipContent>{m.sync_zoom_hint()}</TooltipContent>
     </Tooltip>
   )
 }

@@ -22,7 +22,12 @@ export interface EditorState {
   panels: Panel[]
   /** Show plain-language notes beside the code. */
   explain: boolean
+  /** Zooming one panel's preview zooms them all. */
+  syncZoom: boolean
 }
+
+/** A preview's zoom: a scale, or whatever shows each label whole. */
+export type PreviewZoom = number | 'fit'
 
 export const MAX_PANELS = 4
 
@@ -32,14 +37,25 @@ const LEGACY_STORAGE_KEY = 'zpl-editor:v1'
 
 export const editorStore = createStore<EditorState>(loadPersisted())
 
+/**
+ * Each panel's preview zoom, kept apart from the editor state so a pinch
+ * doesn't write to storage on every frame.
+ */
+export const zoomStore = createStore<Record<string, PreviewZoom | undefined>>(
+  {},
+)
+
 let persisted = editorStore.state
 
 editorStore.subscribe((state) => {
   if (state === persisted) return
   persisted = state
   try {
-    const { panels, explain } = state
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ panels, explain }))
+    const { panels, explain, syncZoom } = state
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ panels, explain, syncZoom }),
+    )
   } catch {
     // Storage can be full or blocked (private mode); the editor still works.
   }
@@ -72,6 +88,24 @@ export function setExplain(explain: boolean) {
   editorStore.setState((state) =>
     state.explain === explain ? state : { ...state, explain },
   )
+}
+
+/** Starts or stops zooming every preview together; starting fits them all. */
+export function setSyncZoom(syncZoom: boolean) {
+  editorStore.setState((state) =>
+    state.syncZoom === syncZoom ? state : { ...state, syncZoom },
+  )
+  if (syncZoom) zoomStore.setState(() => ({}))
+}
+
+/** Zooms a panel's preview, and every other one while zoom is synced. */
+export function setPreviewZoom(id: string, zoom: PreviewZoom) {
+  const { panels, syncZoom } = editorStore.state
+  const ids = syncZoom ? panels.map((panel) => panel.id) : [id]
+  zoomStore.setState((zooms) => ({
+    ...zooms,
+    ...Object.fromEntries(ids.map((panelId) => [panelId, zoom])),
+  }))
 }
 
 /** Adds an empty panel right after another one, sized like it. */
@@ -184,15 +218,17 @@ function loadPersisted(): EditorState {
   const fallback = {
     panels: [createPanel(SAMPLE_LABEL, DEFAULT_SETTINGS)],
     explain: true,
+    syncZoom: false,
   }
   if (typeof localStorage === 'undefined') return fallback
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
-      const { panels, explain } = JSON.parse(raw) as {
+      const { panels, explain, syncZoom } = JSON.parse(raw) as {
         panels?: unknown
         explain?: unknown
+        syncZoom?: unknown
       }
       return {
         panels:
@@ -202,6 +238,7 @@ function loadPersisted(): EditorState {
                 .map((panel: Partial<Panel> | null) => sanitizePanel(panel))
             : fallback.panels,
         explain: typeof explain === 'boolean' ? explain : fallback.explain,
+        syncZoom: typeof syncZoom === 'boolean' ? syncZoom : fallback.syncZoom,
       }
     }
 

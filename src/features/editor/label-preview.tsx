@@ -1,4 +1,12 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import {
+  useEffect,
+  useEffectEvent,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { IconAlertTriangle, IconMinus, IconPlus } from '@tabler/icons-react'
 import { shallow, useSelector } from '@tanstack/react-store'
 import { cn } from 'cn'
@@ -24,11 +32,28 @@ import {
 import type { LabelSettings, ZplSize } from '#/lib/zpl/settings'
 import { m } from '#/paraglide/messages'
 import { getLocale } from '#/paraglide/runtime'
-import { editorStore, selectPanel, setSettings } from './store'
+import {
+  editorStore,
+  selectPanel,
+  setPreviewZoom,
+  setSettings,
+  zoomStore,
+} from './store'
+import type { PreviewZoom } from './store'
 import { useOtherPanelRender } from './use-label-render'
 import type { LabelRender } from './use-label-render'
 
 const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4]
+const MIN_ZOOM = ZOOM_STEPS[0]
+const MAX_ZOOM = ZOOM_STEPS[ZOOM_STEPS.length - 1]
+/** How fast scrolling zooms, per pixel scrolled. */
+const SCROLL_ZOOM_RATE = 0.002
+/** Pinches arrive as small ctrl+wheel deltas, so they zoom faster. */
+const PINCH_ZOOM_RATE = 0.01
+/** The most one wheel event zooms, as a power of e, so a notch can't leap. */
+const MAX_ZOOM_STEP = 0.3
+/** Marks what scrolling zooms on, and what stays under the pointer. */
+const ZOOM_ANCHOR = '[data-zoom-anchor]'
 const VIEWPORT_PADDING = 24
 /** Between the two labels when comparing side by side. */
 const PAIR_GAP = 16
@@ -40,7 +65,24 @@ const COLUMN_TITLE_HEIGHT = 16 + 6
 type CompareMode = 'side-by-side' | 'difference'
 /** The panel's labels alone, or compared with another panel's. */
 type View = 'single' | CompareMode
-type Zoom = number | 'fit'
+
+/** Where the pointer was over an element, to keep it there while zooming. */
+interface ZoomAnchor {
+  element: Element
+  /** The point as a fraction of the element's size. */
+  fx: number
+  fy: number
+  /** The pointer, from the viewport's corner. */
+  x: number
+  y: number
+}
+
+/** Safari reports trackpad pinches as gestures rather than wheel events. */
+interface GestureEvent extends UIEvent {
+  scale: number
+  clientX: number
+  clientY: number
+}
 
 /** Another panel's labels, and what to call both sides. */
 interface Compared {
@@ -74,8 +116,9 @@ export function LabelPreview({
   compareTarget: target,
 }: LabelPreviewProps) {
   const headingId = useId()
-  const [zoom, setZoom] = useState<Zoom>('fit')
-  const [viewportRef, viewport] = useElementSize<HTMLDivElement>()
+  const zoom = useSelector(zoomStore, (zooms) => zooms[panelId] ?? 'fit')
+  const [viewportRef, viewport, viewportElement] =
+    useElementSize<HTMLDivElement>()
   const panelIds = useSelector(
     editorStore,
     (state) => state.panels.map((panel) => panel.id),
@@ -127,6 +170,144 @@ export function LabelPreview({
           ) / 1000,
         )
   const scale = zoom === 'fit' ? fitScale : zoom
+
+  // Zooms not yet rendered: events can arrive faster than renders, and each
+  // builds on the last.
+  const pendingZoom = useRef<{
+    scale: number
+    anchor: ZoomAnchor | undefined
+  } | null>(null)
+
+  const zoomAt = (
+    factor: number,
+    clientX: number,
+    clientY: number,
+    pointerTarget: EventTarget | null,
+  ) => {
+    if (!viewportElement || labels.length === 0) return
+    const from = pendingZoom.current?.scale ?? scale
+    const to = Math.min(Math.max(from * factor, MIN_ZOOM), MAX_ZOOM)
+    if (to === from) return
+
+    const box = viewportElement.getBoundingClientRect()
+    const x = clientX - box.left
+    const y = clientY - box.top
+    const pending = pendingZoom.current?.anchor
+    let anchor = pending && { ...pending, x, y }
+    if (!anchor) {
+      const element =
+        (pointerTarget instanceof Element &&
+          pointerTarget.closest(ZOOM_ANCHOR)) ||
+        viewportElement.firstElementChild
+      if (element) {
+        const rect = element.getBoundingClientRect()
+        anchor = {
+          element,
+          fx: (clientX - rect.left) / rect.width,
+          fy: (clientY - rect.top) / rect.height,
+          x,
+          y,
+        }
+      }
+    }
+    pendingZoom.current = { scale: to, anchor }
+    setPreviewZoom(panelId, to)
+  }
+
+  const pinching = useRef(false)
+  const onWheel = useEffectEvent((event: WheelEvent) => {
+    // A pinch zooms anywhere; scrolling only over a label, and only up and down.
+    const pinch = event.ctrlKey && !pinching.current
+    const overLabel =
+      event.target instanceof Element && event.target.closest(ZOOM_ANCHOR)
+    if (
+      !pinch &&
+      (!overLabel ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        Math.abs(event.deltaX) > Math.abs(event.deltaY))
+    ) {
+      return
+    }
+    event.preventDefault()
+    const pixels =
+      event.deltaY *
+      (event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? viewport.height
+          : 1)
+    const step = -pixels * (pinch ? PINCH_ZOOM_RATE : SCROLL_ZOOM_RATE)
+    zoomAt(
+      Math.exp(Math.min(Math.max(step, -MAX_ZOOM_STEP), MAX_ZOOM_STEP)),
+      event.clientX,
+      event.clientY,
+      event.target,
+    )
+  })
+  const onGesture = useEffectEvent((event: GestureEvent, factor: number) => {
+    zoomAt(factor, event.clientX, event.clientY, event.target)
+  })
+
+  useEffect(() => {
+    if (!viewportElement) return
+    // Safari's gesture scale counts from the start of the pinch.
+    let gestureScale = 1
+    const wheel = (event: WheelEvent) => onWheel(event)
+    const gestureStart = (event: Event) => {
+      event.preventDefault()
+      pinching.current = true
+      gestureScale = 1
+    }
+    const gestureChange = (event: Event) => {
+      event.preventDefault()
+      const gesture = event as GestureEvent
+      onGesture(gesture, gesture.scale / gestureScale)
+      gestureScale = gesture.scale
+    }
+    const gestureEnd = (event: Event) => {
+      event.preventDefault()
+      pinching.current = false
+    }
+    // Not passive, so the page itself doesn't scroll or zoom too.
+    viewportElement.addEventListener('wheel', wheel, { passive: false })
+    viewportElement.addEventListener('gesturestart', gestureStart)
+    viewportElement.addEventListener('gesturechange', gestureChange)
+    viewportElement.addEventListener('gestureend', gestureEnd)
+    return () => {
+      viewportElement.removeEventListener('wheel', wheel)
+      viewportElement.removeEventListener('gesturestart', gestureStart)
+      viewportElement.removeEventListener('gesturechange', gestureChange)
+      viewportElement.removeEventListener('gestureend', gestureEnd)
+    }
+  }, [viewportElement])
+
+  // Keeps what was under the pointer there, or else what was in the middle
+  // of the pane, as labels grow and shrink.
+  const shownScale = useRef(scale)
+  useLayoutEffect(() => {
+    const previous = shownScale.current
+    shownScale.current = scale
+    const anchor = pendingZoom.current?.anchor
+    pendingZoom.current = null
+    if (!viewportElement || previous === scale) return
+
+    if (anchor?.element.isConnected) {
+      const box = viewportElement.getBoundingClientRect()
+      const rect = anchor.element.getBoundingClientRect()
+      viewportElement.scrollLeft +=
+        rect.left + anchor.fx * rect.width - box.left - anchor.x
+      viewportElement.scrollTop +=
+        rect.top + anchor.fy * rect.height - box.top - anchor.y
+      return
+    }
+    const ratio = scale / previous
+    const { clientWidth, clientHeight } = viewportElement
+    viewportElement.scrollLeft =
+      (viewportElement.scrollLeft + clientWidth / 2) * ratio - clientWidth / 2
+    viewportElement.scrollTop =
+      (viewportElement.scrollTop + clientHeight / 2) * ratio - clientHeight / 2
+  }, [scale, viewportElement])
 
   return (
     <section
@@ -191,7 +372,11 @@ export function LabelPreview({
             : undefined
         }
       >
-        <ZoomControls zoom={zoom} scale={scale} onZoomChange={setZoom} />
+        <ZoomControls
+          zoom={zoom}
+          scale={scale}
+          onZoomChange={(next) => setPreviewZoom(panelId, next)}
+        />
       </StatusLine>
     </section>
   )
@@ -202,10 +387,10 @@ function ZoomControls({
   scale,
   onZoomChange,
 }: {
-  zoom: Zoom
+  zoom: PreviewZoom
   /** The zoom in effect, which fitting the pane works out. */
   scale: number
-  onZoomChange: (zoom: Zoom) => void
+  onZoomChange: (zoom: PreviewZoom) => void
 }) {
   const percent = Math.round(scale * 100)
   const larger = ZOOM_STEPS.find((step) => step > scale * 1.01)
@@ -399,6 +584,7 @@ function LabelFigure({
               />
             ) : (
               <div
+                data-zoom-anchor
                 className="flex items-center justify-center border border-dashed p-4 text-center text-xs text-muted-foreground"
                 style={{
                   width: label.width * scale,
@@ -495,6 +681,7 @@ function RasterSurface({
   const canvasRef = useCanvasCopy(image)
   return (
     <div
+      data-zoom-anchor
       className={cn(
         'relative bg-white shadow-sm ring-1 ring-border',
         className,

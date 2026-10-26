@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 
-/** Tracks an element's content size. Attach the returned callback as a ref. */
+/**
+ * Tracks an element's content size. Attach the returned callback as a ref;
+ * the element itself comes back too, once attached.
+ */
 export function useElementSize<T extends HTMLElement>() {
   const [element, setElement] = useState<T | null>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
@@ -15,5 +18,5 @@ export function useElementSize<T extends HTMLElement>() {
     return () => observer.disconnect()
   }, [element])
 
-  return [setElement, size] as const
+  return [setElement, size, element] as const
 }

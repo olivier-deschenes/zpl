@@ -29,6 +29,8 @@
   "zoom_fit_short": "Fit",
   "zoom_level": "Zoom {percent}%",
   "zoom_percent": "{percent}%",
+  "sync_zoom": "Sync zoom",
+  "sync_zoom_hint": "Zoom every panel's preview together.",
   "compare": "Compare",
   "compare_panels": "Compare panels",
   "compare_pair": "{first} ↔ {second}",
