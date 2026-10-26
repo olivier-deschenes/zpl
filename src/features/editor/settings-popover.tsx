@@ -50,7 +50,7 @@ export function SettingsPopover({
         </TooltipTrigger>
         <TooltipContent>{m.settings()}</TooltipContent>
       </Tooltip>
-      <PopoverContent side="top" align="start" className="w-72">
+      <PopoverContent align="start" className="w-72">
         <PopoverHeader>
           <PopoverTitle>{m.settings()}</PopoverTitle>
           <PopoverDescription>{m.settings_hint()}</PopoverDescription>

@@ -1,27 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import {
-  IconAlertTriangle,
-  IconChevronDown,
-  IconDots,
-  IconGitCompare,
-  IconZoomIn,
-  IconZoomOut,
-} from '@tabler/icons-react'
+import { IconAlertTriangle, IconMinus, IconPlus } from '@tabler/icons-react'
 import { shallow, useSelector } from '@tanstack/react-store'
 import { cn } from 'cn'
 
 import { Button } from '#/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '#/components/ui/dropdown-menu'
 import { ToggleGroup, ToggleGroupItem } from '#/components/ui/toggle-group'
 import {
   Tooltip,
@@ -37,20 +19,16 @@ import {
   MAX_SIZE_IN,
   MIN_SIZE_IN,
   dotsToInches,
-  dpiFor,
   labelDots,
 } from '#/lib/zpl/settings'
 import type { LabelSettings, ZplSize } from '#/lib/zpl/settings'
 import { m } from '#/paraglide/messages'
 import { getLocale } from '#/paraglide/runtime'
-import { SettingsPopover } from './settings-popover'
-import { editorStore, selectPanel, setExplain, setSettings } from './store'
+import { editorStore, selectPanel, setSettings } from './store'
 import { useOtherPanelRender } from './use-label-render'
 import type { LabelRender } from './use-label-render'
 
 const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4]
-/** The zoom menu's shortcuts, besides fitting the pane. */
-const ZOOM_PRESETS = [0.5, 1, 2]
 const VIEWPORT_PADDING = 24
 /** Between the two labels when comparing side by side. */
 const PAIR_GAP = 16
@@ -58,9 +36,6 @@ const PAIR_GAP = 16
 const CAPTION_HEIGHT = 16 + 8
 /** A side-by-side column's title line and the gap below it. */
 const COLUMN_TITLE_HEIGHT = 16 + 6
-
-/** The compare menu's value for comparing with nothing; never a panel id. */
-const NO_TARGET = 'nothing'
 
 type CompareMode = 'side-by-side' | 'difference'
 /** The panel's labels alone, or compared with another panel's. */
@@ -86,6 +61,8 @@ interface LabelPreviewProps {
   isRendering: boolean
   error: Error | null
   onRetry: () => void
+  /** The panel to compare with, if any. */
+  compareTarget: string | null
 }
 
 export function LabelPreview({
@@ -94,6 +71,7 @@ export function LabelPreview({
   isRendering,
   error,
   onRetry,
+  compareTarget: target,
 }: LabelPreviewProps) {
   const headingId = useId()
   const [zoom, setZoom] = useState<Zoom>('fit')
@@ -103,11 +81,7 @@ export function LabelPreview({
     (state) => state.panels.map((panel) => panel.id),
     { compare: shallow },
   )
-  const [compareWith, setCompareWith] = useState<string | null>(null)
   const [compareMode, setCompareMode] = useState<CompareMode>('side-by-side')
-  // Closing the other panel ends the comparison.
-  const target =
-    compareWith !== null && panelIds.includes(compareWith) ? compareWith : null
   const view: View = target ? compareMode : 'single'
   const other = useOtherPanelRender(target ?? undefined)
 
@@ -217,77 +191,13 @@ export function LabelPreview({
             : undefined
         }
       >
-        <CompareMenu
-          target={target}
-          panels={panelIds
-            .filter((id) => id !== panelId)
-            .map((id) => ({ id, name: panelName(id) }))}
-          onTargetChange={setCompareWith}
-        />
-        <ZoomMenu zoom={zoom} scale={scale} onZoomChange={setZoom} />
-        <OptionsMenu />
+        <ZoomControls zoom={zoom} scale={scale} onZoomChange={setZoom} />
       </StatusLine>
     </section>
   )
 }
 
-/** Picks another panel to compare with. */
-function CompareMenu({
-  target,
-  panels,
-  onTargetChange,
-}: {
-  target: string | null
-  /** The other panels, in order. */
-  panels: ReadonlyArray<{ id: string; name: string }>
-  onTargetChange: (target: string | null) => void
-}) {
-  const targetName = panels.find((panel) => panel.id === target)?.name
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="xs"
-          className={cn(
-            'text-muted-foreground',
-            target && 'bg-muted text-foreground',
-          )}
-        >
-          <IconGitCompare data-icon="inline-start" />
-          {targetName ? m.compare_target({ name: targetName }) : m.compare()}
-          <IconChevronDown data-icon="inline-end" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="end" className="w-52">
-        <DropdownMenuLabel>{m.compare_with()}</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={target ?? NO_TARGET}
-          onValueChange={(next) =>
-            onTargetChange(next === NO_TARGET ? null : next)
-          }
-        >
-          <DropdownMenuRadioItem value={NO_TARGET}>
-            {m.compare_nothing()}
-          </DropdownMenuRadioItem>
-          {panels.map(({ id, name }) => (
-            <DropdownMenuRadioItem key={id} value={id}>
-              {name}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-        {panels.length === 0 && (
-          <DropdownMenuItem disabled>
-            {m.compare_add_panel_hint()}
-          </DropdownMenuItem>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
-function ZoomMenu({
+function ZoomControls({
   zoom,
   scale,
   onZoomChange,
@@ -297,99 +207,63 @@ function ZoomMenu({
   scale: number
   onZoomChange: (zoom: Zoom) => void
 }) {
-  const percent = (value: number) => Math.round(value * 100)
+  const percent = Math.round(scale * 100)
   const larger = ZOOM_STEPS.find((step) => step > scale * 1.01)
   const smaller = ZOOM_STEPS.filter((step) => step < scale * 0.99).at(-1)
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="xs"
-          aria-label={m.zoom_level({ percent: percent(scale) })}
-          className="text-muted-foreground tabular-nums"
-        >
-          {m.zoom_percent({ percent: percent(scale) })}
-          <IconChevronDown data-icon="inline-end" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="end" className="w-40">
-        {/* Stepping keeps the menu open, so a few clicks zoom a long way. */}
-        <DropdownMenuItem
-          disabled={larger === undefined}
-          onSelect={(event) => {
-            event.preventDefault()
-            if (larger) onZoomChange(larger)
-          }}
-        >
-          <IconZoomIn />
-          {m.zoom_in()}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={smaller === undefined}
-          onSelect={(event) => {
-            event.preventDefault()
-            if (smaller) onZoomChange(smaller)
-          }}
-        >
-          <IconZoomOut />
-          {m.zoom_out()}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuRadioGroup
-          value={String(zoom)}
-          onValueChange={(value) =>
-            onZoomChange(value === 'fit' ? 'fit' : Number(value))
-          }
-        >
-          <DropdownMenuRadioItem value="fit">
-            {m.zoom_fit()}
-          </DropdownMenuRadioItem>
-          {ZOOM_PRESETS.map((preset) => (
-            <DropdownMenuRadioItem key={preset} value={String(preset)}>
-              {m.zoom_percent({ percent: percent(preset) })}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-/** Editor options that apply to every panel, like the saved settings behind them. */
-function OptionsMenu() {
-  const explain = useSelector(editorStore, (state) => state.explain)
-
-  return (
-    <DropdownMenu>
+    <div className="flex items-center">
       <Tooltip>
         <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label={m.options()}
-              className="text-muted-foreground"
-            >
-              <IconDots />
-            </Button>
-          </DropdownMenuTrigger>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={m.zoom_out()}
+            className="text-muted-foreground"
+            disabled={smaller === undefined}
+            onClick={() => smaller && onZoomChange(smaller)}
+          >
+            <IconMinus />
+          </Button>
         </TooltipTrigger>
-        <TooltipContent>{m.options()}</TooltipContent>
+        <TooltipContent>{m.zoom_out()}</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent side="top" align="end" className="w-64">
-        <DropdownMenuCheckboxItem
-          checked={explain}
-          onCheckedChange={setExplain}
-          className="flex-col items-start gap-0.5"
-        >
-          {m.explain()}
-          <span className="text-xs text-muted-foreground">
-            {m.explain_hint()}
-          </span>
-        </DropdownMenuCheckboxItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      <span
+        aria-label={m.zoom_level({ percent })}
+        className="min-w-10 text-center"
+      >
+        {m.zoom_percent({ percent })}
+      </span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={m.zoom_in()}
+            className="text-muted-foreground"
+            disabled={larger === undefined}
+            onClick={() => larger && onZoomChange(larger)}
+          >
+            <IconPlus />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{m.zoom_in()}</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="xs"
+            aria-pressed={zoom === 'fit'}
+            className="text-muted-foreground aria-pressed:bg-muted aria-pressed:text-foreground"
+            onClick={() => onZoomChange('fit')}
+          >
+            {m.zoom_fit_short()}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{m.zoom_fit()}</TooltipContent>
+      </Tooltip>
+    </div>
   )
 }
 
@@ -684,7 +558,7 @@ function StatusLine({
   onRetry,
   otherPanel,
   children,
-}: LabelPreviewProps & {
+}: Omit<LabelPreviewProps, 'compareTarget'> & {
   /** The panel being compared with, once its render is available. */
   otherPanel?: { name: string; labelCount: number }
   /** Controls at the end of the line. */
@@ -699,17 +573,7 @@ function StatusLine({
   const zplSize = render ? zplSizeSettings(render.zplSize, settings) : null
 
   return (
-    <div className="flex min-h-8 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t py-1 pr-1.5 pl-1.5 text-xs text-muted-foreground tabular-nums">
-      <SettingsPopover panelId={panelId}>
-        <Button variant="ghost" size="xs" className="text-muted-foreground">
-          {m.status_size({
-            width: settings.widthIn,
-            height: settings.heightIn,
-            dpi: dpiFor(settings.dpmm),
-          })}
-          <IconChevronDown data-icon="inline-end" />
-        </Button>
-      </SettingsPopover>
+    <div className="flex min-h-8 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t py-1 pr-1.5 pl-3 text-xs text-muted-foreground tabular-nums">
       {zplSize && (
         <Tooltip>
           <TooltipTrigger asChild>
