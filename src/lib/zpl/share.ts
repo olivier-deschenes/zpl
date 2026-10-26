@@ -1,6 +1,6 @@
 import { Inflate, deflateSync, strFromU8, strToU8 } from 'fflate'
 
-import type { LabelSettings } from './render'
+import type { LabelSettings } from './settings'
 
 /** The fragment parameter that holds the compressed ZPL. */
 const SOURCE_PARAM = 'zpl'

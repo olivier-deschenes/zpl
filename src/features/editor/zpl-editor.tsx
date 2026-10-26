@@ -1,20 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import { lintGutter, setDiagnostics } from '@codemirror/lint'
 import type { Diagnostic } from '@codemirror/lint'
-import { Compartment, EditorSelection } from '@codemirror/state'
+import { Compartment } from '@codemirror/state'
 import type { Text } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { useSelector } from '@tanstack/react-store'
 import CodeMirror from '@uiw/react-codemirror'
 
 import { decodeBase64Zpl } from '#/lib/zpl/base64'
-import { DEFAULT_SETTINGS, dpiFor } from '#/lib/zpl/render'
-import type { ZplDiagnostic } from '#/lib/zpl/render'
+import type { LabelaryWarning } from '#/lib/zpl/labelary'
+import { DEFAULT_SETTINGS, dpiFor } from '#/lib/zpl/settings'
 import { m } from '#/paraglide/messages'
-import { uniqueDiagnostics } from './diagnostics'
-import { editorStore, selectPanel, setSelection, setSource } from './store'
+import { editorStore, selectPanel, setSource } from './store'
 import type { LabelRender } from './use-label-render'
-import { fromPreview, setHighlight, zpl, zplHelp } from './zpl-language'
+import { zpl, zplHelp } from './zpl-language'
 
 /** Pasted or dropped base64 is decoded to ZPL before it reaches the document. */
 const base64Input = EditorView.domEventHandlers({
@@ -65,16 +64,6 @@ const base64Input = EditorView.domEventHandlers({
   },
 })
 
-/** Tells the panel's preview where the cursor is so it can outline that field. */
-function selectionSync(panelId: string) {
-  return EditorView.updateListener.of((update) => {
-    if (!update.selectionSet) return
-    if (update.transactions.some((tr) => tr.annotation(fromPreview))) return
-    const { head } = update.state.selection.main
-    setSelection(panelId, { from: head, to: head, origin: 'editor' })
-  })
-}
-
 interface ZplEditorProps {
   panelId: string
   render: LabelRender | undefined
@@ -85,10 +74,6 @@ export function ZplEditor({ panelId, render, autoFocus }: ZplEditorProps) {
   const source = useSelector(
     editorStore,
     (state) => selectPanel(state, panelId)?.source ?? '',
-  )
-  const selection = useSelector(
-    editorStore,
-    (state) => state.selections[panelId] ?? null,
   )
   const dpi = useSelector(editorStore, (state) =>
     dpiFor(selectPanel(state, panelId)?.settings.dpmm ?? DEFAULT_SETTINGS.dpmm),
@@ -107,9 +92,8 @@ export function ZplEditor({ panelId, render, autoFocus }: ZplEditorProps) {
       EditorView.lineWrapping,
       EditorView.contentAttributes.of({ 'aria-label': m.editor_label() }),
       base64Input,
-      selectionSync(panelId),
     ],
-    [panelId, help],
+    [help],
   )
 
   // Runs again when the extensions are swapped, which empties the compartment.
@@ -117,37 +101,15 @@ export function ZplEditor({ panelId, render, autoFocus }: ZplEditorProps) {
     view?.dispatch({ effects: help.reconfigure(zplHelp({ dpi, explain })) })
   }, [view, help, extensions, dpi, explain])
 
-  // Follow clicks in the preview: highlight the field's code and scroll to it.
-  useEffect(() => {
-    if (!view) return
-    if (selection === null) {
-      view.dispatch({ effects: setHighlight.of(null) })
-      return
-    }
-    if (selection.origin !== 'preview') return
-
-    const length = view.state.doc.length
-    const from = Math.min(selection.from, length)
-    const to = Math.min(selection.to, length)
-    view.dispatch({
-      selection: EditorSelection.cursor(from),
-      effects: [
-        setHighlight.of({ from, to }),
-        EditorView.scrollIntoView(from, { y: 'center' }),
-      ],
-      annotations: fromPreview.of(true),
-    })
-  }, [view, selection])
-
-  // Spans only line up with the text they were rendered from, so skip stale
-  // results; the next render brings fresh diagnostics.
+  // Offsets only line up with the text they were rendered from, so skip
+  // stale results; the next render brings fresh warnings.
   useEffect(() => {
     if (!view || !render) return
     if (render.source !== view.state.doc.toString()) return
     view.dispatch(
       setDiagnostics(
         view.state,
-        toLintDiagnostics(render.result.diagnostics, view.state.doc),
+        toLintDiagnostics(render.warnings, view.state.doc),
       ),
     )
   }, [view, render])
@@ -167,25 +129,23 @@ export function ZplEditor({ panelId, render, autoFocus }: ZplEditorProps) {
   )
 }
 
+/** Labelary's linter warnings, underlined in the code. */
 function toLintDiagnostics(
-  diagnostics: readonly ZplDiagnostic[],
+  warnings: readonly LabelaryWarning[],
   doc: Text,
 ): Diagnostic[] {
-  return uniqueDiagnostics(diagnostics).flatMap((diagnostic) => {
-    if (!diagnostic.span) return []
-    const from = Math.min(diagnostic.span.start, doc.length)
-    const end = Math.min(Math.max(diagnostic.span.end, from), doc.length)
-    // Command spans run on through the line break; stopping before it keeps
-    // the underline off the explanation at the end of the line.
+  return warnings.map((warning) => {
+    const from = Math.min(warning.from, doc.length)
+    const end = Math.min(Math.max(warning.to, from), doc.length)
+    // Stopping before a line break keeps the underline off the explanation
+    // at the end of the line.
     const to = from + doc.sliceString(from, end).trimEnd().length
-    return [
-      {
-        from,
-        to,
-        severity: diagnostic.severity,
-        message: diagnostic.message,
-        source: diagnostic.code,
-      },
-    ]
+    return {
+      from,
+      to,
+      severity: 'warning',
+      message: warning.message,
+      source: warning.command,
+    }
   })
 }

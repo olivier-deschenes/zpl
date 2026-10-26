@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { readZplSize } from './render'
+import { readZplSize } from './settings'
 
 describe('readZplSize', () => {
   it('reads ^PW and ^LL in dots', async () => {
@@ -25,7 +25,7 @@ describe('readZplSize', () => {
     })
   })
 
-  it('ignores ^LL after the first field, like zplr', async () => {
+  it('ignores ^LL after the first field, like a printer', async () => {
     expect(
       (await readZplSize('^XA^LL300^FO0,0^FDx^FS^LL900^XZ', 8)).height,
     ).toBe(300)

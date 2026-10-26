@@ -2,11 +2,10 @@
 
 A browser-based editor for Zebra ZPL labels, live at [zpl.puuid.com](https://zpl.puuid.com):
 
-- Live preview that re-renders 300 ms after you stop typing, rendered locally by [zplr](https://github.com/le2ni/zplr). Labels never leave the browser unless you use Labelary or share a link.
+- Live preview rendered by [Labelary](https://labelary.com/viewer.html)'s public API 600 ms after you stop typing, so the ZPL is sent to labelary.com. Requests are spaced to stay under its rate limit of 3 a second; jobs show their first 50 labels.
 - Up to four panels side by side (swipe between them on phones), each with its own label size and print density. Panels are saved in the browser.
-- Compare a panel with another panel or with [Labelary](https://labelary.com/viewer.html), side by side or as a colour-coded difference overlay, to see what changed between two versions or where the local render differs. Comparing with Labelary sends the ZPL to its public API, spaced to stay under its rate limit of 3 requests a second.
-- Click anything on the label to jump to and highlight its code; move the cursor in the code to outline the matching element.
-- Hover a command to see its name and how well the preview supports it; problems found while rendering are underlined in the code.
+- Compare a panel with another panel, side by side or as a colour-coded difference overlay, to see what changed between two versions.
+- Hover a command to see what it and its values mean; problems Labelary's linter finds are underlined in the code.
 - Pasted or dropped base64 is detected and decoded automatically.
 - Export to PNG (a zip for multi-label jobs) or PDF at the real label size, or copy as ZPL or base64.
 - Copy a share link from a panel's Export menu. The label is compressed into the part of the URL after `#`, which browsers never send to a server; opening the link adds the label as the first panel.
@@ -35,9 +34,9 @@ The app runs on Cloudflare Workers through the Cloudflare Vite plugin. `bun run 
 
 ## Project layout
 
-- `src/routes/index.tsx`: the page and its row of panels. The route is client-only (`ssr: false`), since CodeMirror and the canvas renderer need the browser.
+- `src/routes/index.tsx`: the page and its row of panels. The route is client-only (`ssr: false`), since CodeMirror and the canvas previews need the browser.
 - `src/features/editor/`: the editor, preview, toolbar and the TanStack Store that holds the panels.
-- `src/lib/zpl/`: rendering, export, base64 detection, Labelary and image diffing, with their unit tests.
+- `src/lib/zpl/`: label settings, the Labelary client, export, base64 detection and image diffing, with their unit tests. [zplr](https://github.com/le2ni/zplr) is only used to parse ZPL for the editor's hints.
 - `messages/en.json`: UI strings, compiled by Paraglide into `src/paraglide/` (generated, not committed).
 - `src/components/ui/`: shadcn/ui components. Add more with `bunx shadcn@latest add <component>`.
 

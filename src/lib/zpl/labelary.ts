@@ -1,29 +1,37 @@
 import { AsyncQueuer } from '@tanstack/react-pacer'
 
-import type { PrintDensity } from './render'
+import { labelDots } from './settings'
+import type { LabelSettings, PrintDensity } from './settings'
 
 const API_URL = 'https://api.labelary.com/v1/printers'
 const MM_PER_INCH = 25.4
 /** Labelary's free tier allows 3 requests a second from each client. */
 const REQUEST_SPACING_MS = 350
+/** Each label is its own request, so long jobs are cut short. */
+export const MAX_LABELS = 50
 
-export interface LabelarySize {
+export interface LabelaryLabel {
+  canvas: HTMLCanvasElement
   /** In dots. */
   width: number
   height: number
   printDensity: PrintDensity
 }
 
-export interface LabelaryLabel {
-  canvas: HTMLCanvasElement
-  width: number
-  height: number
+/** A problem Labelary's linter found, located in the source as sent. */
+export interface LabelaryWarning {
+  /** UTF-16 offsets into the source, like editor positions. */
+  from: number
+  to: number
+  command: string
+  message: string
 }
 
 export interface LabelaryResult {
   labels: LabelaryLabel[]
   /** How many labels Labelary found in the ZPL, fetched or not. */
   total: number
+  warnings: LabelaryWarning[]
 }
 
 export class LabelaryError extends Error {
@@ -50,29 +58,38 @@ function enqueue<T>(task: () => Promise<T>): Promise<T> {
   })
 }
 
-/**
- * Renders the first `sizes.length` labels of `source` with Labelary, each at
- * the matching size so it lines up dot for dot with the local render.
- */
+/** Renders up to `MAX_LABELS` labels of `source` at the settings' size. */
 export async function renderWithLabelary(
   source: string,
-  sizes: readonly LabelarySize[],
+  settings: LabelSettings,
   signal?: AbortSignal,
 ): Promise<LabelaryResult> {
-  if (sizes.length === 0) return { labels: [], total: 0 }
+  if (!source.trim()) return { labels: [], total: 0, warnings: [] }
 
-  const first = await fetchLabel(source, sizes[0], 0, signal)
-  const labels = [first.label]
-  const count = Math.min(first.total, sizes.length)
+  const first = await fetchLabel(source, settings, 0, signal)
+  const responses = [first]
+  const count = Math.min(first.total, MAX_LABELS)
   for (let index = 1; index < count; index++) {
-    labels.push((await fetchLabel(source, sizes[index], index, signal)).label)
+    responses.push(await fetchLabel(source, settings, index, signal))
   }
-  return { labels, total: first.total }
+
+  const warnings = new Map<string, LabelaryWarning>()
+  for (const response of responses) {
+    for (const warning of parseWarnings(source, response.warnings)) {
+      warnings.set(`${warning.from}:${warning.to}:${warning.message}`, warning)
+    }
+  }
+
+  return {
+    labels: responses.map((response) => response.label),
+    total: first.total,
+    warnings: [...warnings.values()],
+  }
 }
 
 function fetchLabel(
   source: string,
-  size: LabelarySize,
+  settings: LabelSettings,
   index: number,
   signal?: AbortSignal,
 ) {
@@ -81,9 +98,9 @@ function fetchLabel(
 
     const body = new FormData()
     body.append('file', new Blob([source]), 'label.zpl')
-    const response = await fetch(labelUrl(size, index), {
+    const response = await fetch(labelUrl(settings, index), {
       method: 'POST',
-      headers: { Accept: 'image/png' },
+      headers: { Accept: 'image/png', 'X-Linter': 'On' },
       body,
       signal,
     })
@@ -107,17 +124,74 @@ function fetchLabel(
     bitmap.close()
 
     return {
-      label: { canvas, width: canvas.width, height: canvas.height },
+      label: {
+        canvas,
+        width: canvas.width,
+        height: canvas.height,
+        printDensity: settings.dpmm,
+      },
       total: Number.isFinite(total) && total > 0 ? total : 1,
+      warnings: response.headers.get('X-Warnings') ?? '',
     }
   })
 }
 
-function labelUrl(size: LabelarySize, index: number) {
+function labelUrl(settings: LabelSettings, index: number) {
   // Labelary converts at dpmm × 25.4 dpi with the fraction dropped (152, 203,
   // 304, 609), not the nominal 300 / 600, then rounds the dots down. Aim half
   // a dot past the size we want: 812 dots at 203 dpi is sent as 4.0025 in.
-  const dpi = Math.floor(size.printDensity * MM_PER_INCH)
+  const { width, height } = labelDots(settings)
+  const dpi = Math.floor(settings.dpmm * MM_PER_INCH)
   const inches = (dots: number) => ((dots + 0.5) / dpi).toFixed(4)
-  return `${API_URL}/${size.printDensity}dpmm/labels/${inches(size.width)}x${inches(size.height)}/${index}/`
+  return `${API_URL}/${settings.dpmm}dpmm/labels/${inches(width)}x${inches(height)}/${index}/`
+}
+
+/**
+ * Reads Labelary's `X-Warnings` header: groups of byte offset, byte length,
+ * command, parameter number and message, all joined by `|`.
+ */
+export function parseWarnings(
+  source: string,
+  header: string,
+): LabelaryWarning[] {
+  if (!header) return []
+  const fields = header.split('|')
+  const toIndex = byteToIndex(source)
+  const warnings: LabelaryWarning[] = []
+  for (let at = 0; at + 4 < fields.length; at += 5) {
+    const offset = Number(fields[at])
+    const length = Number(fields[at + 1])
+    const message = fields[at + 4].trim()
+    if (!Number.isFinite(offset) || !Number.isFinite(length) || !message) {
+      continue
+    }
+    warnings.push({
+      from: toIndex(offset),
+      to: toIndex(offset + Math.max(length, 0)),
+      command: fields[at + 2],
+      message,
+    })
+  }
+  return warnings
+}
+
+/** Maps UTF-8 byte offsets, which Labelary reports, to string indices. */
+function byteToIndex(source: string) {
+  return (byteOffset: number) => {
+    let bytes = 0
+    let index = 0
+    while (index < source.length && bytes < byteOffset) {
+      const codePoint = source.codePointAt(index) ?? 0
+      bytes +=
+        codePoint < 0x80
+          ? 1
+          : codePoint < 0x800
+            ? 2
+            : codePoint < 0x10000
+              ? 3
+              : 4
+      index += codePoint > 0xffff ? 2 : 1
+    }
+    return index
+  }
 }

@@ -3,7 +3,7 @@ import {
   StreamLanguage,
   syntaxHighlighting,
 } from '@codemirror/language'
-import { Annotation, Facet, StateEffect, StateField } from '@codemirror/state'
+import { Facet } from '@codemirror/state'
 import {
   Decoration,
   EditorView,
@@ -15,14 +15,13 @@ import type { EditorState, Extension, Text } from '@codemirror/state'
 import type { DecorationSet, ViewUpdate } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
 import { findCommandAtOffset, parseDocument } from 'zplr/web'
-import type { CommandCapabilityStatus, ZplDocument } from 'zplr/web'
+import type { ZplDocument } from 'zplr/web'
 
 import {
   explainCommand,
   explainDocument,
   parameterIndexAt,
 } from '#/lib/zpl/explain'
-import { m } from '#/paraglide/messages'
 
 interface ZplTokenState {
   /** Inside ^FD/^FV field data or a ^FX comment, which run until the next command. */
@@ -63,14 +62,6 @@ const zplHighlightStyle = HighlightStyle.define([
   { tag: tags.string, color: 'var(--syntax-data)' },
   { tag: tags.comment, color: 'var(--muted-foreground)', fontStyle: 'italic' },
 ])
-
-const STATUS_LABEL: Record<CommandCapabilityStatus, () => string> = {
-  supported: m.command_supported,
-  partial: m.command_partial,
-  'non-rendering': m.command_non_rendering,
-  unsupported: m.command_unsupported,
-  unknown: m.command_unknown,
-}
 
 /** The printer dpi the explanations convert dots to inches with. */
 const labelDpi = Facet.define<number, number>({
@@ -124,16 +115,10 @@ const commandTooltip = hoverTooltip((view, pos) => {
     create() {
       const dom = element('div', 'cm-zpl-command-tooltip')
 
-      const head = element('div', 'cm-zpl-tooltip-head')
-      head.append(
+      dom.append(
         element('strong', null, `${explanation.canonical} ${explanation.name}`),
-        element(
-          'span',
-          'cm-zpl-tooltip-status',
-          STATUS_LABEL[explanation.capability?.status ?? 'unknown'](),
-        ),
+        element('p', null, explanation.summary),
       )
-      dom.append(head, element('p', null, explanation.summary))
 
       if (explanation.parameters.length > 0) {
         const list = element('dl', 'cm-zpl-tooltip-parameters')
@@ -228,35 +213,6 @@ export function zplHelp({
   return [labelDpi.of(dpi), explain ? explainHints : []]
 }
 
-/** Marks transactions dispatched because a field was clicked in the preview. */
-export const fromPreview = Annotation.define<boolean>()
-
-export const setHighlight = StateEffect.define<{
-  from: number
-  to: number
-} | null>()
-
-const highlightMark = Decoration.mark({ class: 'cm-zpl-highlight' })
-
-/** The source span of the field last clicked in the preview. */
-const highlightField = StateField.define<DecorationSet>({
-  create: () => Decoration.none,
-  update(highlight, tr) {
-    for (const effect of tr.effects) {
-      if (effect.is(setHighlight)) {
-        const range = effect.value
-        return range && range.to > range.from
-          ? Decoration.set(highlightMark.range(range.from, range.to))
-          : Decoration.none
-      }
-    }
-    // Moving the cursor yourself dismisses the highlight.
-    if (tr.selection && !tr.annotation(fromPreview)) return Decoration.none
-    return highlight.map(tr.changes)
-  },
-  provide: (field) => EditorView.decorations.from(field),
-})
-
 const MONO_FONT = "'Geist Mono Variable', ui-monospace, monospace"
 const SANS_FONT = "'Geist Variable', ui-sans-serif, system-ui, sans-serif"
 
@@ -289,10 +245,6 @@ const editorTheme = EditorView.theme({
   },
   '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground':
     { backgroundColor: 'var(--selection-soft)' },
-  '.cm-zpl-highlight': {
-    backgroundColor: 'var(--selection-soft)',
-    outline: '1px solid var(--selection)',
-  },
   '.cm-tooltip': {
     color: 'var(--popover-foreground)',
     backgroundColor: 'var(--popover)',
@@ -309,16 +261,6 @@ const editorTheme = EditorView.theme({
     lineHeight: '1.45',
   },
   '.cm-zpl-command-tooltip p': { margin: '0' },
-  '.cm-zpl-tooltip-head': {
-    display: 'flex',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: '12px',
-  },
-  '.cm-zpl-tooltip-status': {
-    flexShrink: '0',
-    color: 'var(--muted-foreground)',
-  },
   '.cm-zpl-tooltip-parameters': {
     display: 'grid',
     gridTemplateColumns: 'auto 1fr',
@@ -358,7 +300,6 @@ export function zpl(): Extension {
     zplStreamLanguage,
     syntaxHighlighting(zplHighlightStyle),
     commandTooltip,
-    highlightField,
     editorTheme,
   ]
 }

@@ -3,34 +3,44 @@ import { useDebouncedValue } from '@tanstack/react-pacer'
 import { keepPreviousData, queryOptions, useQuery } from '@tanstack/react-query'
 import { useSelector } from '@tanstack/react-store'
 
-import { DEFAULT_SETTINGS, readZplSize, renderLabels } from '#/lib/zpl/render'
-import type { LabelSettings, RenderJobResult, ZplSize } from '#/lib/zpl/render'
+import { LabelaryError, renderWithLabelary } from '#/lib/zpl/labelary'
+import type { LabelaryResult } from '#/lib/zpl/labelary'
+import { DEFAULT_SETTINGS, readZplSize } from '#/lib/zpl/settings'
+import type { LabelSettings, ZplSize } from '#/lib/zpl/settings'
 import { editorStore, selectPanel } from './store'
 
-const RENDER_DELAY_MS = 300
+/** Long enough after typing stops to stay under Labelary's rate limit. */
+const RENDER_DELAY_MS = 600
 
-export interface LabelRender {
+export interface LabelRender extends LabelaryResult {
   /** The exact source this result was rendered from. */
   source: string
-  result: RenderJobResult<HTMLCanvasElement>
   /** What the source's ^PW / ^LL ask for, which the settings override. */
   zplSize: ZplSize
 }
 
-/** Panels showing the same label at the same settings share one render. */
-function labelRenderQuery(source: string, settings: LabelSettings) {
+/**
+ * Panels showing the same label at the same settings share one render, and
+ * exports reuse the one the preview already fetched.
+ */
+export function labelRenderQuery(source: string, settings: LabelSettings) {
   return queryOptions({
-    queryKey: ['zpl-render', source, settings],
-    queryFn: async (): Promise<LabelRender> => {
+    queryKey: ['label-render', source, settings],
+    queryFn: async ({ signal }): Promise<LabelRender> => {
       const [result, zplSize] = await Promise.all([
-        renderLabels(source, settings),
+        renderWithLabelary(source, settings, signal),
         readZplSize(source, settings.dpmm),
       ])
-      return { source, result, zplSize }
+      return { ...result, source, zplSize }
     },
     staleTime: Infinity,
     gcTime: 30_000,
-    retry: false,
+    retry: (failures, error) =>
+      failures < 2 && error instanceof LabelaryError && error.status === 429,
+    retryDelay: (_failures, error) =>
+      error instanceof LabelaryError && error.retryAfter
+        ? error.retryAfter * 1000
+        : 1000,
   })
 }
 
@@ -60,12 +70,13 @@ export function useLabelRender(panelId: string) {
     render: query.data ?? lastGood,
     isRendering: query.isFetching || source !== debouncedSource,
     error: query.error,
+    retry: () => void query.refetch(),
   }
 }
 
 /**
  * What another panel's preview shows, read from the cache that preview
- * fills rather than rendered again.
+ * fills rather than fetched again.
  */
 export function useOtherPanelRender(panelId: string | undefined) {
   const source = useSelector(editorStore, (state) =>
@@ -79,7 +90,7 @@ export function useOtherPanelRender(panelId: string | undefined) {
 
   const query = useQuery({
     ...labelRenderQuery(source, settings),
-    // That panel's own preview renders it once its typing pause is over.
+    // That panel's own preview fetches it once its typing pause is over.
     enabled: false,
     placeholderData: keepPreviousData,
   })

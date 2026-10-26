@@ -33,7 +33,7 @@ export function EditorPanel({
 }: EditorPanelProps) {
   const headingId = useId()
   const [sectionRef, { width }] = useElementSize<HTMLElement>()
-  const { render, isRendering, error } = useLabelRender(panelId)
+  const { render, isRendering, error, retry } = useLabelRender(panelId)
 
   // Until the first measurement, guess from the page so a lone panel on a
   // wide screen doesn't flash stacked.
@@ -70,7 +70,7 @@ export function EditorPanel({
               </div>
               <PanelToolbar
                 panelId={panelId}
-                labelCount={render?.result.labels.length ?? 0}
+                labelCount={render?.labels.length ?? 0}
               />
             </div>
             <div className="min-h-0 flex-1">
@@ -89,6 +89,7 @@ export function EditorPanel({
             render={render}
             isRendering={isRendering}
             error={error}
+            onRetry={retry}
           />
         </ResizablePanel>
       </ResizablePanelGroup>

@@ -7,6 +7,7 @@ import {
   IconPlus,
   IconX,
 } from '@tabler/icons-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useSelector } from '@tanstack/react-store'
 
 import { Button } from '#/components/ui/button'
@@ -43,6 +44,7 @@ import {
   setExplain,
   setFileName,
 } from './store'
+import { labelRenderQuery } from './use-label-render'
 
 interface PanelToolbarProps {
   panelId: string
@@ -156,6 +158,7 @@ function ExportMenu({
   // Exports read the live source, not the debounced one the preview shows.
   const livePanel = () => selectPanel(editorStore.state, panelId)
   const copyShareLink = useCopyShareLink(panelId)
+  const queryClient = useQueryClient()
 
   const promptFileName = (format: ExportFormat) => {
     const { panels } = editorStore.state
@@ -178,7 +181,16 @@ function ExportMenu({
     const panel = livePanel()
     if (!panel) return
     setFileName(panelId, baseName)
-    await exportAs(format, panel.source, panel.settings, baseName)
+    // Unchanged since the preview caught up, this is the render it shows.
+    const labels =
+      format === 'zpl'
+        ? []
+        : (
+            await queryClient.fetchQuery(
+              labelRenderQuery(panel.source, panel.settings),
+            )
+          ).labels
+    await exportAs(format, panel.source, labels, baseName)
   }
 
   const copy = (copier: typeof copyZpl) => copier(livePanel()?.source ?? '')

@@ -1,8 +1,8 @@
 import { zipSync } from 'fflate'
 
 import { encodeBase64 } from './base64'
-import { dotsToInches, renderLabels } from './render'
-import type { LabelSettings, RenderedLabel } from './render'
+import { dotsToInches } from './settings'
+import type { LabelaryLabel } from './labelary'
 
 const POINTS_PER_INCH = 72
 
@@ -29,18 +29,21 @@ function trimFileName(name: string) {
   return name.replace(/^[\s.]+|[\s.]+$/g, '')
 }
 
-/** Downloads the label in `format` and returns the name it was saved under. */
+/**
+ * Downloads the label in `format` and returns the name it was saved under.
+ * PNG and PDF are built from `labels`, the job as Labelary rendered it.
+ */
 export function exportAs(
   format: ExportFormat,
   source: string,
-  settings: LabelSettings,
+  labels: readonly LabelaryLabel[],
   baseName: string,
 ): Promise<string> {
   switch (format) {
     case 'png':
-      return exportPng(source, settings, baseName)
+      return exportPng(labels, baseName)
     case 'pdf':
-      return exportPdf(source, settings, baseName)
+      return exportPdf(labels, baseName)
     case 'zpl':
       return Promise.resolve(exportZpl(source, baseName))
   }
@@ -48,11 +51,9 @@ export function exportAs(
 
 /** A single PNG downloads as-is; several are bundled in a zip. */
 export async function exportPng(
-  source: string,
-  settings: LabelSettings,
+  labels: readonly LabelaryLabel[],
   baseName: string,
 ) {
-  const { labels } = await renderLabels(source, settings)
   const pngs = await Promise.all(labels.map(toPngBytes))
   if (pngs.length === 0) throw new Error('No labels to export')
 
@@ -75,11 +76,9 @@ export async function exportPng(
 }
 
 export async function exportPdf(
-  source: string,
-  settings: LabelSettings,
+  labels: readonly LabelaryLabel[],
   baseName: string,
 ) {
-  const { labels } = await renderLabels(source, settings)
   if (labels.length === 0) throw new Error('No labels to export')
 
   // Only PDF export needs pdf-lib, so fetch it on first use.
@@ -155,9 +154,7 @@ export function downloadBlob(blob: Blob, filename: string) {
   return filename
 }
 
-function toPngBytes(
-  label: RenderedLabel<HTMLCanvasElement>,
-): Promise<Uint8Array<ArrayBuffer>> {
+function toPngBytes(label: LabelaryLabel): Promise<Uint8Array<ArrayBuffer>> {
   return new Promise((resolve, reject) => {
     label.canvas.toBlob((blob) => {
       if (!blob) {

@@ -5,16 +5,9 @@ import {
   DENSITIES,
   MAX_SIZE_IN,
   MIN_SIZE_IN,
-} from '#/lib/zpl/render'
-import type { LabelSettings } from '#/lib/zpl/render'
+} from '#/lib/zpl/settings'
+import type { LabelSettings } from '#/lib/zpl/settings'
 import { SAMPLE_LABEL } from './sample-label'
-
-export interface SourceSelection {
-  from: number
-  to: number
-  /** Which side made the selection, so the other side knows to follow it. */
-  origin: 'editor' | 'preview'
-}
 
 /** One editor and preview pair, shown side by side with the others. */
 export interface Panel {
@@ -25,19 +18,10 @@ export interface Panel {
   fileName?: string
 }
 
-/** Which renderer draws the preview when not comparing. */
-export type PreviewSource = 'local' | 'labelary'
-
 export interface EditorState {
   panels: Panel[]
-  previewSource: PreviewSource
   /** Show plain-language notes beside the code. */
   explain: boolean
-  /**
-   * Keyed by panel id. Kept apart from `panels` because it changes on every
-   * cursor move and is never saved.
-   */
-  selections: Partial<Record<string, SourceSelection | null>>
 }
 
 export const MAX_PANELS = 4
@@ -46,29 +30,16 @@ const STORAGE_KEY = 'zpl-editor:v2'
 /** Single-label state saved before there were panels. */
 const LEGACY_STORAGE_KEY = 'zpl-editor:v1'
 
-export const editorStore = createStore<EditorState>({
-  ...loadPersisted(),
-  selections: {},
-})
+export const editorStore = createStore<EditorState>(loadPersisted())
 
 let persisted = editorStore.state
 
 editorStore.subscribe((state) => {
-  // Selection changes on every cursor move; only write when the rest does.
-  const { panels, previewSource, explain } = state
-  if (
-    panels === persisted.panels &&
-    previewSource === persisted.previewSource &&
-    explain === persisted.explain
-  ) {
-    return
-  }
+  if (state === persisted) return
   persisted = state
   try {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ panels, previewSource, explain }),
-    )
+    const { panels, explain } = state
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ panels, explain }))
   } catch {
     // Storage can be full or blocked (private mode); the editor still works.
   }
@@ -97,26 +68,9 @@ export function setFileName(id: string, fileName: string) {
   )
 }
 
-export function setPreviewSource(previewSource: PreviewSource) {
-  editorStore.setState((state) =>
-    state.previewSource === previewSource ? state : { ...state, previewSource },
-  )
-}
-
 export function setExplain(explain: boolean) {
   editorStore.setState((state) =>
     state.explain === explain ? state : { ...state, explain },
-  )
-}
-
-export function setSelection(id: string, selection: SourceSelection | null) {
-  editorStore.setState((state) =>
-    // Preview clicks always go through, so clicking the same field again
-    // scrolls the editor back to it.
-    selection?.origin !== 'preview' &&
-    sameSelection(state.selections[id] ?? null, selection)
-      ? state
-      : { ...state, selections: { ...state.selections, [id]: selection } },
   )
 }
 
@@ -157,14 +111,10 @@ export function removePanel(id: string) {
   const { panels } = editorStore.state
   if (panels.length === 1 || !selectPanel(editorStore.state, id)) return
 
-  editorStore.setState((state) => {
-    const { [id]: _removed, ...selections } = state.selections
-    return {
-      ...state,
-      panels: state.panels.filter((item) => item.id !== id),
-      selections,
-    }
-  })
+  editorStore.setState((state) => ({
+    ...state,
+    panels: state.panels.filter((item) => item.id !== id),
+  }))
 }
 
 /**
@@ -194,11 +144,6 @@ export function openSharedLabel(
   editorStore.setState((state) => ({
     ...state,
     panels: [shared, ...kept],
-    selections: Object.fromEntries(
-      Object.entries(state.selections).filter(([id]) =>
-        kept.some((panel) => panel.id === id),
-      ),
-    ),
   }))
 }
 
@@ -235,18 +180,9 @@ function isUntouched(panel: Panel) {
   return panel.source === SAMPLE_LABEL || panel.source.trim() === ''
 }
 
-function sameSelection(a: SourceSelection | null, b: SourceSelection | null) {
-  if (a === null || b === null) return a === b
-  return a.from === b.from && a.to === b.to && a.origin === b.origin
-}
-
-function loadPersisted(): Pick<
-  EditorState,
-  'panels' | 'previewSource' | 'explain'
-> {
+function loadPersisted(): EditorState {
   const fallback = {
     panels: [createPanel(SAMPLE_LABEL, DEFAULT_SETTINGS)],
-    previewSource: 'local' as const,
     explain: true,
   }
   if (typeof localStorage === 'undefined') return fallback
@@ -254,9 +190,8 @@ function loadPersisted(): Pick<
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
-      const { panels, previewSource, explain } = JSON.parse(raw) as {
+      const { panels, explain } = JSON.parse(raw) as {
         panels?: unknown
-        previewSource?: unknown
         explain?: unknown
       }
       return {
@@ -266,7 +201,6 @@ function loadPersisted(): Pick<
                 .slice(0, MAX_PANELS)
                 .map((panel: Partial<Panel> | null) => sanitizePanel(panel))
             : fallback.panels,
-        previewSource: previewSource === 'labelary' ? 'labelary' : 'local',
         explain: typeof explain === 'boolean' ? explain : fallback.explain,
       }
     }

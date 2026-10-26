@@ -29,8 +29,8 @@ import {
   DENSITIES,
   MAX_SIZE_IN,
   MIN_SIZE_IN,
-} from '#/lib/zpl/render'
-import type { PrintDensity } from '#/lib/zpl/render'
+} from '#/lib/zpl/settings'
+import type { PrintDensity } from '#/lib/zpl/settings'
 import { m } from '#/paraglide/messages'
 import { editorStore, selectPanel, setSettings } from './store'
 
