@@ -2,28 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import {
   IconBinary,
   IconCheck,
-  IconChevronDown,
   IconCopy,
   IconCopyPlus,
-  IconGitCompare,
   IconLink,
   IconX,
 } from '@tabler/icons-react'
 import { useQueryClient } from '@tanstack/react-query'
-import { shallow, useSelector } from '@tanstack/react-store'
+import { useSelector } from '@tanstack/react-store'
+import { cn } from 'cn'
 
 import { Button } from '#/components/ui/button'
 import { ButtonGroup } from '#/components/ui/button-group'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from '#/components/ui/dropdown-menu'
-import { Separator } from '#/components/ui/separator'
-import { Toggle } from '#/components/ui/toggle'
 import {
   Tooltip,
   TooltipContent,
@@ -45,7 +34,6 @@ import {
   editorStore,
   removePanel,
   selectPanel,
-  setExplain,
   setFileName,
 } from './store'
 import { labelRenderQuery } from './use-label-render'
@@ -53,104 +41,77 @@ import { labelRenderQuery } from './use-label-render'
 /** How long a copy button shows its check mark. */
 const COPIED_MS = 1500
 
-/** The compare menu's value for comparing with nothing; never a panel id. */
-const NO_TARGET = 'nothing'
-
 interface PanelToolbarProps {
   panelId: string
   /** Labels in the panel's current preview. */
   labelCount: number
-  /** The panel the preview is compared with, if any. */
-  compareTarget: string | null
-  onCompareTargetChange: (target: string | null) => void
 }
 
-/** Every panel action, laid out in the header so none hides in a menu. */
-export function PanelToolbar({
-  panelId,
-  labelCount,
-  compareTarget,
-  onCompareTargetChange,
-}: PanelToolbarProps) {
-  const panelIds = useSelector(
-    editorStore,
-    (state) => state.panels.map((panel) => panel.id),
-    { compare: shallow },
-  )
-  const full = panelIds.length >= MAX_PANELS
+/**
+ * The panel's own actions, in one row of compact buttons. A narrow panel
+ * leaves out the least used ones so the row never wraps.
+ */
+export function PanelToolbar({ panelId, labelCount }: PanelToolbarProps) {
+  const panelCount = useSelector(editorStore, (state) => state.panels.length)
   const livePanel = () => selectPanel(editorStore.state, panelId)
   const copyShareLink = useCopyShareLink(panelId)
 
   return (
-    <div className="ml-auto flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
-      <div className="flex items-center gap-1">
-        <ExplainToggle />
-        <CompareControl
-          panels={panelIds
-            .filter((id) => id !== panelId)
-            .map((id) => ({
-              id,
-              name: m.panel_title({ index: panelIds.indexOf(id) + 1 }),
-            }))}
-          target={compareTarget}
-          onTargetChange={onCompareTargetChange}
-        />
-      </div>
-      <ToolbarSeparator />
-      <div className="flex items-center">
-        <CopyButton
-          label={m.copy_zpl()}
-          icon={<IconCopy />}
-          onCopy={() => copyZpl(livePanel()?.source ?? '')}
-        />
-        <CopyButton
-          label={m.copy_base64()}
-          icon={<IconBinary />}
-          onCopy={() => copyBase64(livePanel()?.source ?? '')}
-        />
-        <CopyButton
-          label={m.copy_share_link()}
-          icon={<IconLink />}
-          onCopy={copyShareLink}
-        />
-      </div>
-      <ToolbarSeparator />
+    <div className="ml-auto flex shrink-0 items-center gap-0.5">
+      <CopyButton
+        label={m.copy_zpl()}
+        icon={<IconCopy />}
+        onCopy={() => copyZpl(livePanel()?.source ?? '')}
+      />
+      <CopyButton
+        label={m.copy_base64()}
+        icon={<IconBinary />}
+        onCopy={() => copyBase64(livePanel()?.source ?? '')}
+        className="@max-md:hidden"
+      />
+      <CopyButton
+        label={m.copy_share_link()}
+        icon={<IconLink />}
+        onCopy={copyShareLink}
+        className="@max-2xs:hidden"
+      />
       <DownloadButtons panelId={panelId} labelCount={labelCount} />
-      <ToolbarSeparator />
-      <div className="flex items-center">
+      <IconButton
+        label={m.duplicate_panel()}
+        disabled={panelCount >= MAX_PANELS}
+        onClick={() => duplicatePanel(panelId)}
+        className="@max-md:hidden"
+      >
+        <IconCopyPlus />
+      </IconButton>
+      {panelCount > 1 && (
         <IconButton
-          label={m.duplicate_panel()}
-          disabled={full}
-          onClick={() => duplicatePanel(panelId)}
+          label={m.close_panel()}
+          onClick={() => removePanel(panelId)}
         >
-          <IconCopyPlus />
+          <IconX />
         </IconButton>
-        {panelIds.length > 1 && (
-          <IconButton
-            label={m.close_panel()}
-            onClick={() => removePanel(panelId)}
-          >
-            <IconX />
-          </IconButton>
-        )}
-      </div>
+      )}
     </div>
   )
 }
 
-function ToolbarSeparator() {
-  return <Separator orientation="vertical" className="my-1.5" />
-}
-
 function IconButton({
   label,
+  className,
   children,
   ...props
 }: React.ComponentProps<typeof Button> & { label: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label={label} {...props}>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={label}
+          className={cn('text-muted-foreground', className)}
+          {...props}
+        >
           {children}
         </Button>
       </TooltipTrigger>
@@ -164,10 +125,12 @@ function CopyButton({
   label,
   icon,
   onCopy,
+  className,
 }: {
   label: string
   icon: React.ReactNode
   onCopy: () => Promise<void>
+  className?: string
 }) {
   const [copied, setCopied] = useState(false)
 
@@ -180,119 +143,11 @@ function CopyButton({
   return (
     <IconButton
       label={copied ? m.copied() : label}
+      className={className}
       onClick={() => void onCopy().then(() => setCopied(true))}
     >
       {copied ? <IconCheck /> : icon}
     </IconButton>
-  )
-}
-
-/** Explain applies to every panel, like the saved setting behind it. */
-function ExplainToggle() {
-  const explain = useSelector(editorStore, (state) => state.explain)
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Toggle
-          variant="outline"
-          size="sm"
-          pressed={explain}
-          onPressedChange={setExplain}
-        >
-          {m.explain()}
-        </Toggle>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-64">{m.explain_hint()}</TooltipContent>
-    </Tooltip>
-  )
-}
-
-/**
- * Compares with the only other panel in one press, or picks which one when
- * there are several.
- */
-function CompareControl({
-  panels,
-  target,
-  onTargetChange,
-}: {
-  /** The other panels, in order. */
-  panels: ReadonlyArray<{ id: string; name: string }>
-  target: string | null
-  onTargetChange: (target: string | null) => void
-}) {
-  if (panels.length === 0) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          {/* A disabled button gets no pointer events, so this holds the tooltip. */}
-          <span tabIndex={0}>
-            <Toggle variant="outline" size="sm" disabled>
-              <IconGitCompare />
-              {m.compare()}
-            </Toggle>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>{m.compare_add_panel_hint()}</TooltipContent>
-      </Tooltip>
-    )
-  }
-
-  if (panels.length === 1) {
-    const [only] = panels
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Toggle
-            variant="outline"
-            size="sm"
-            pressed={target === only.id}
-            onPressedChange={(pressed) =>
-              onTargetChange(pressed ? only.id : null)
-            }
-          >
-            <IconGitCompare />
-            {m.compare()}
-          </Toggle>
-        </TooltipTrigger>
-        <TooltipContent>
-          {m.compare_with_name({ name: only.name })}
-        </TooltipContent>
-      </Tooltip>
-    )
-  }
-
-  const targetName = panels.find((panel) => panel.id === target)?.name
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Toggle variant="outline" size="sm" pressed={target !== null}>
-          <IconGitCompare />
-          {targetName ? m.compare_target({ name: targetName }) : m.compare()}
-          <IconChevronDown />
-        </Toggle>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuLabel>{m.compare_with()}</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={target ?? NO_TARGET}
-          onValueChange={(next) =>
-            onTargetChange(next === NO_TARGET ? null : next)
-          }
-        >
-          <DropdownMenuRadioItem value={NO_TARGET}>
-            {m.compare_nothing()}
-          </DropdownMenuRadioItem>
-          {panels.map(({ id, name }) => (
-            <DropdownMenuRadioItem key={id} value={id}>
-              {name}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
   )
 }
 
@@ -357,18 +212,16 @@ function DownloadButtons({
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-muted-foreground @max-2xl:hidden">
-        {m.download()}
-      </span>
+    <>
       <ButtonGroup aria-label={m.download()}>
         {DOWNLOADS.map(({ format, label }) => (
           <Tooltip key={format}>
             <TooltipTrigger asChild>
               <Button
                 variant="outline"
-                size="sm"
+                size="xs"
                 aria-label={label()}
+                className="px-1.5"
                 onClick={(event) => {
                   triggerRef.current = event.currentTarget
                   promptFileName(format)
@@ -391,6 +244,6 @@ function DownloadButtons({
         onDownload={(baseName) => void download(dialog.format, baseName)}
         returnFocusRef={triggerRef}
       />
-    </div>
+    </>
   )
 }

@@ -1,6 +1,6 @@
-import { useId, useState } from 'react'
+import { useId } from 'react'
 import { IconChevronDown } from '@tabler/icons-react'
-import { shallow, useSelector } from '@tanstack/react-store'
+import { useSelector } from '@tanstack/react-store'
 
 import {
   ResizableHandle,
@@ -21,12 +21,19 @@ import { ZplEditor } from './zpl-editor'
 /** A lone panel narrower than this puts the preview under the editor. */
 const SIDE_BY_SIDE_MIN_WIDTH = 768
 
+/** Short enough for a narrow header; the settings show the exact size. */
+const SIZE_FORMAT = new Intl.NumberFormat(undefined, {
+  maximumFractionDigits: 2,
+})
+
 interface EditorPanelProps {
   panelId: string
   index: number
   count: number
   /** The page is phone-sized, so every panel stacks. */
   stacked: boolean
+  /** The panel the preview is compared with, if any. */
+  compareTarget: string | null
   autoFocus?: boolean
 }
 
@@ -35,20 +42,12 @@ export function EditorPanel({
   index,
   count,
   stacked,
+  compareTarget,
   autoFocus,
 }: EditorPanelProps) {
   const headingId = useId()
   const [sectionRef, { width }] = useElementSize<HTMLElement>()
   const { render, isRendering, error, retry } = useLabelRender(panelId)
-  const panelIds = useSelector(
-    editorStore,
-    (state) => state.panels.map((panel) => panel.id),
-    { compare: shallow },
-  )
-  const [compareWith, setCompareWith] = useState<string | null>(null)
-  // Closing the other panel ends the comparison.
-  const compareTarget =
-    compareWith !== null && panelIds.includes(compareWith) ? compareWith : null
 
   // Several panels share the width, so each puts its code under the
   // label. A lone panel goes side by side once it is wide enough; until the
@@ -91,27 +90,14 @@ export function EditorPanel({
       aria-labelledby={headingId}
       className="flex h-full min-w-0 flex-col"
     >
-      <div className="@container flex min-h-10 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b py-1.5 pr-1.5 pl-3">
-        <div className="flex min-w-0 items-center gap-2">
-          {index === 0 && (
-            <img
-              src="/logo.svg"
-              alt=""
-              width={20}
-              height={20}
-              className="size-5 shrink-0 dark:invert"
-            />
-          )}
-          <h2 id={headingId} className="truncate text-xs font-medium">
-            {title}
-          </h2>
-          <SizeButton panelId={panelId} />
-        </div>
+      <div className="@container flex h-10 shrink-0 items-center gap-0.5 border-b pr-1.5 pl-3">
+        <h2 id={headingId} className="shrink-0 text-xs font-medium">
+          {title}
+        </h2>
+        <SizeButton panelId={panelId} />
         <PanelToolbar
           panelId={panelId}
           labelCount={render?.labels.length ?? 0}
-          compareTarget={compareTarget}
-          onCompareTargetChange={setCompareWith}
         />
       </div>
       <div className="min-h-0 flex-1">
@@ -134,12 +120,18 @@ function SizeButton({ panelId }: { panelId: string }) {
 
   return (
     <SettingsPopover panelId={panelId}>
-      <Button variant="outline" size="sm" className="tabular-nums">
-        {m.status_size({
-          width: settings.widthIn,
-          height: settings.heightIn,
-          dpi: dpiFor(settings.dpmm),
-        })}
+      <Button
+        variant="ghost"
+        size="xs"
+        className="min-w-0 shrink text-muted-foreground tabular-nums"
+      >
+        <span className="truncate">
+          {m.status_size({
+            width: SIZE_FORMAT.format(settings.widthIn),
+            height: SIZE_FORMAT.format(settings.heightIn),
+            dpi: dpiFor(settings.dpmm),
+          })}
+        </span>
         <IconChevronDown data-icon="inline-end" />
       </Button>
     </SettingsPopover>
