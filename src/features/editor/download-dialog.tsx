@@ -138,6 +138,10 @@ function DownloadForm({
                   id={inputId}
                   name="name"
                   autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  data-1p-ignore
+                  data-lpignore="true"
                   spellCheck={false}
                   value={field.state.value}
                   onChange={(event) => field.handleChange(event.target.value)}

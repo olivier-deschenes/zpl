@@ -167,6 +167,12 @@ export function FileLibrary({ open, onOpenChange }: FileLibraryProps) {
               ref={searchRef}
               aria-label={m.find_file()}
               placeholder={m.find_file()}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              data-1p-ignore
+              data-lpignore="true"
+              spellCheck={false}
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               className="h-8 pl-7"

@@ -137,6 +137,10 @@ export function RenameFileDialog({
                       id={id}
                       name="name"
                       autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      data-1p-ignore
+                      data-lpignore="true"
                       spellCheck={false}
                       value={field.state.value}
                       onChange={(event) =>
