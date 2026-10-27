@@ -152,6 +152,9 @@ function DownloadButtons({
   panelId: string
   labelCount: number
 }) {
+  const hasSource = useSelector(editorStore, (state) =>
+    Boolean(selectFile(state, panelId)?.source.trim()),
+  )
   // The button that opened the dialog gets focus back once it closes.
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const [dialog, setDialog] = useState({
@@ -176,7 +179,7 @@ function DownloadButtons({
 
   const download = async (format: ExportFormat, baseName: string) => {
     const panel = livePanel()
-    if (!panel) return
+    if (!panel?.source.trim()) return
     // Unchanged since the preview caught up, this is the render it shows.
     const labels =
       format === 'zpl'
@@ -198,6 +201,7 @@ function DownloadButtons({
             variant="outline"
             size="xs"
             aria-label={label()}
+            disabled={!hasSource}
             className="px-1.5"
             onClick={(event) => {
               triggerRef.current = event.currentTarget
