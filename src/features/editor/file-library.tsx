@@ -131,33 +131,28 @@ export function FileLibrary({ open, onOpenChange }: FileLibraryProps) {
           onOpenChange(value)
         }}
       >
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <PopoverTrigger asChild>
-              <Button
-                ref={triggerRef}
-                variant="ghost"
-                size="sm"
-                className="shrink-0 px-1.5"
-                aria-label={
-                  storageStatus === 'saved'
-                    ? m.files_count({ count: files.length })
-                    : m.files_not_saved()
-                }
-              >
-                {storageStatus === 'saved' ? (
-                  <IconFolder />
-                ) : (
-                  <IconAlertTriangle className="text-destructive" />
-                )}
-                <span className="text-muted-foreground tabular-nums">
-                  {files.length}
-                </span>
-              </Button>
-            </PopoverTrigger>
-          </TooltipTrigger>
-          <TooltipContent>{m.files()}</TooltipContent>
-        </Tooltip>
+        <PopoverTrigger asChild>
+          <Button
+            ref={triggerRef}
+            variant="ghost"
+            size="sm"
+            className="shrink-0 px-1.5"
+            aria-label={
+              storageStatus === 'saved'
+                ? m.files_count({ count: files.length })
+                : m.files_not_saved()
+            }
+          >
+            {storageStatus === 'saved' ? (
+              <IconFolder />
+            ) : (
+              <IconAlertTriangle className="text-destructive" />
+            )}
+            <span className="text-muted-foreground tabular-nums">
+              {files.length}
+            </span>
+          </Button>
+        </PopoverTrigger>
         <PopoverContent
           align="start"
           sideOffset={8}
