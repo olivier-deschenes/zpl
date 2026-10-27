@@ -9,6 +9,9 @@ const MM_PER_INCH = 25.4
 const REQUEST_SPACING_MS = 350
 /** Each label is its own request, so long jobs are cut short. */
 export const MAX_LABELS = 50
+const CACHE_NAME = 'labelary-renders'
+/** Renders kept across reloads, each one label's PNG. */
+const MAX_CACHED_RENDERS = 500
 
 export interface LabelaryLabel {
   canvas: HTMLCanvasElement
@@ -87,53 +90,119 @@ export async function renderWithLabelary(
   }
 }
 
-function fetchLabel(
+async function fetchLabel(
   source: string,
   settings: LabelSettings,
   index: number,
   signal?: AbortSignal,
 ) {
-  return enqueue(async () => {
-    signal?.throwIfAborted()
+  signal?.throwIfAborted()
+  const url = labelUrl(settings, index)
+  const key = await cacheKey(url, source)
+  const response =
+    (key ? await readCached(key) : undefined) ??
+    (await enqueue(() => requestLabel(url, source, key, signal)))
+  signal?.throwIfAborted()
 
-    const body = new FormData()
-    body.append('file', new Blob([source]), 'label.zpl')
-    const response = await fetch(labelUrl(settings, index), {
-      method: 'POST',
-      headers: { Accept: 'image/png', 'X-Linter': 'On' },
-      body,
-      signal,
-    })
+  const total = Number(response.headers.get('X-Total-Count') ?? 1)
+  const bitmap = await createImageBitmap(await response.blob())
+  const canvas = document.createElement('canvas')
+  canvas.width = bitmap.width
+  canvas.height = bitmap.height
+  canvas.getContext('2d')?.drawImage(bitmap, 0, 0)
+  bitmap.close()
 
-    if (!response.ok) {
-      const text = await response.text().catch(() => '')
-      const retryAfter = Number(response.headers.get('Retry-After'))
-      throw new LabelaryError(
-        text.replace(/^ERROR:\s*/, '').trim() || `HTTP ${response.status}`,
-        response.status,
-        Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined,
-      )
-    }
+  return {
+    label: {
+      canvas,
+      width: canvas.width,
+      height: canvas.height,
+      printDensity: settings.dpmm,
+    },
+    total: Number.isFinite(total) && total > 0 ? total : 1,
+    warnings: response.headers.get('X-Warnings') ?? '',
+  }
+}
 
-    const total = Number(response.headers.get('X-Total-Count') ?? 1)
-    const bitmap = await createImageBitmap(await response.blob())
-    const canvas = document.createElement('canvas')
-    canvas.width = bitmap.width
-    canvas.height = bitmap.height
-    canvas.getContext('2d')?.drawImage(bitmap, 0, 0)
-    bitmap.close()
+async function requestLabel(
+  url: string,
+  source: string,
+  key: string | undefined,
+  signal?: AbortSignal,
+) {
+  signal?.throwIfAborted()
 
-    return {
-      label: {
-        canvas,
-        width: canvas.width,
-        height: canvas.height,
-        printDensity: settings.dpmm,
-      },
-      total: Number.isFinite(total) && total > 0 ? total : 1,
-      warnings: response.headers.get('X-Warnings') ?? '',
-    }
+  const body = new FormData()
+  body.append('file', new Blob([source]), 'label.zpl')
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { Accept: 'image/png', 'X-Linter': 'On' },
+    body,
+    signal,
   })
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '')
+    const retryAfter = Number(response.headers.get('Retry-After'))
+    throw new LabelaryError(
+      text.replace(/^ERROR:\s*/, '').trim() || `HTTP ${response.status}`,
+      response.status,
+      Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined,
+    )
+  }
+
+  if (key) void writeCached(key, response.clone())
+  return response
+}
+
+/**
+ * Successful renders are kept in Cache Storage so a reload, or going back to
+ * an earlier version of a label, costs no request against the rate limit.
+ * Unavailable outside secure contexts, where every render is fetched.
+ */
+async function openCache() {
+  if (typeof caches === 'undefined') return undefined
+  return caches.open(CACHE_NAME).catch(() => undefined)
+}
+
+/** The render's URL with a hash of the ZPL, since Cache Storage keys on GETs. */
+async function cacheKey(url: string, source: string) {
+  if (typeof crypto === 'undefined' || !('subtle' in crypto)) return undefined
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(source),
+  )
+  const hash = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, '0'),
+  ).join('')
+  return `${url}?zpl=${hash}`
+}
+
+async function readCached(key: string) {
+  const cache = await openCache()
+  return (await cache?.match(key).catch(() => undefined)) ?? undefined
+}
+
+async function writeCached(key: string, response: Response) {
+  const cache = await openCache()
+  if (!cache) return
+  try {
+    // Copied into a plain response so the headers we read stay readable.
+    const headers = new Headers({ 'Content-Type': 'image/png' })
+    for (const name of ['X-Total-Count', 'X-Warnings']) {
+      const value = response.headers.get(name)
+      if (value !== null) headers.set(name, value)
+    }
+    await cache.put(key, new Response(await response.blob(), { headers }))
+
+    // Keys come back oldest first, so drop from the front.
+    const keys = await cache.keys()
+    for (const request of keys.slice(0, keys.length - MAX_CACHED_RENDERS)) {
+      await cache.delete(request)
+    }
+  } catch {
+    // A full or unavailable cache only means the next render is fetched.
+  }
 }
 
 function labelUrl(settings: LabelSettings, index: number) {
