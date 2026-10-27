@@ -9,6 +9,7 @@ A browser-based editor for Zebra ZPL labels, live at [zpl.puuid.com](https://zpl
 - Pasted or dropped base64 is detected and decoded automatically.
 - Export to PNG (a zip for multi-label jobs) or PDF at the real label size, or copy as ZPL or base64.
 - Copy a share link from a panel's Export menu. The label is compressed into the part of the URL after `#`, which browsers never send to a server; opening the link adds the label as the first panel.
+- Open a label from base64 ZPL in the URL: `https://zpl.puuid.com/#base64=<base64>` (or `?base64=<base64>`). Optional `dpmm`, `w` and `h` (inches) set the print density and label size.
 - Label size and print density fall back to the settings when the ZPL has no `^PW` / `^LL`.
 
 ## Development

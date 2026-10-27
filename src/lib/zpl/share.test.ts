@@ -31,6 +31,31 @@ describe('share links', () => {
     )
   })
 
+  it('reads plain base64 ZPL from a fragment or query string', () => {
+    const base64 = btoa('^XA^FO50,50^FDHello^FS^XZ')
+    const query = `?${new URLSearchParams({ base64, dpmm: '8' })}`
+    expect(decodeShareHash(`#base64=${base64}`)?.source).toBe(
+      '^XA^FO50,50^FDHello^FS^XZ',
+    )
+    expect(decodeShareHash(query)).toEqual({
+      source: '^XA^FO50,50^FDHello^FS^XZ',
+      settings: { dpmm: 8, widthIn: 0, heightIn: 0 },
+    })
+  })
+
+  it('accepts base64 whose + was not escaped', () => {
+    const source = '^XA^FO10,10^FD>>>???^FS^XZ'
+    const base64 = btoa(source)
+    expect(base64).toContain('+')
+    expect(decodeShareHash(`?base64=${base64}`)?.source).toBe(source)
+  })
+
+  it('rejects base64 that is not ZPL', () => {
+    expect(() => decodeShareHash('base64=aGVsbG8gd29ybGQ')).toThrow(
+      ShareLinkError,
+    )
+  })
+
   it('ignores fragments that are not share links', () => {
     expect(decodeShareHash('')).toBeNull()
     expect(decodeShareHash('#editor')).toBeNull()

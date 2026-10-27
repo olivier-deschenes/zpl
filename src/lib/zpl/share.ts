@@ -1,9 +1,12 @@
 import { Inflate, deflateSync, strFromU8, strToU8 } from 'fflate'
 
+import { decodeBase64Zpl } from './base64'
 import type { LabelSettings } from './settings'
 
 /** The fragment parameter that holds the compressed ZPL. */
 const SOURCE_PARAM = 'zpl'
+/** Holds plain base64 ZPL, for links built by other tools. */
+const BASE64_PARAM = 'base64'
 /** Inflating stops here, so a crafted link can't exhaust memory. */
 const MAX_SOURCE_BYTES = 8 * 1024 * 1024
 
@@ -39,22 +42,33 @@ export function encodeShareHash(
 }
 
 /**
- * Reads the label from a URL fragment, with or without its `#`. Returns null
- * when the fragment isn't a share link, and throws a `ShareLinkError` when
- * it is one that was cut short or mangled on the way.
+ * Reads the label from a URL fragment or query string, with or without its
+ * `#` or `?`. Besides the app's own compressed `zpl` parameter, a `base64`
+ * parameter holding plain base64 ZPL is accepted. Returns null when the
+ * string isn't a share link, and throws a `ShareLinkError` when it is one
+ * that was cut short or mangled on the way.
  */
 export function decodeShareHash(hash: string): SharedLabel | null {
-  const params = new URLSearchParams(hash.replace(/^#/, ''))
+  const params = new URLSearchParams(hash.replace(/^[#?]/, ''))
   const data = params.get(SOURCE_PARAM)
-  if (data === null) return null
+  const base64 = params.get(BASE64_PARAM)
+  if (data === null && base64 === null) return null
 
   let source: string
-  try {
-    source = strFromU8(inflateCapped(fromBase64Url(data)))
-  } catch (error) {
-    throw new ShareLinkError(
-      error instanceof Error ? error.message : String(error),
-    )
+  if (data !== null) {
+    try {
+      source = strFromU8(inflateCapped(fromBase64Url(data)))
+    } catch (error) {
+      throw new ShareLinkError(
+        error instanceof Error ? error.message : String(error),
+      )
+    }
+  } else {
+    // An unescaped `+` in a URL reads back as a space.
+    const decoded = decodeBase64Zpl(base64!.replace(/ /g, '+'))
+    if (decoded === null)
+      throw new ShareLinkError('The link does not hold base64 ZPL')
+    source = decoded
   }
 
   return {

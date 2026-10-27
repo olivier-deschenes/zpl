@@ -33,9 +33,12 @@ export const Route = createFileRoute('/')({
   // CodeMirror and the canvas renderer only run in the browser.
   ssr: false,
   beforeLoad: ({ location, preload }) => {
-    if (!preload && openShareLink(location.hash)) {
+    if (
+      !preload &&
+      (openShareLink(location.hash) || openShareLink(location.searchStr))
+    ) {
       // Clear the label from the address bar so a reload doesn't reopen it.
-      throw redirect({ to: '/', hash: '', replace: true })
+      throw redirect({ to: '/', search: {}, hash: '', replace: true })
     }
   },
   component: EditorPage,
