@@ -12,6 +12,12 @@ import { useSelector } from '@tanstack/react-store'
 import { cn } from 'cn'
 
 import { Button } from '#/components/ui/button'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from '#/components/ui/empty'
 import { ToggleGroup, ToggleGroupItem } from '#/components/ui/toggle-group'
 import {
   Tooltip,
@@ -366,9 +372,28 @@ export function LabelPreview({
         className="min-h-0 flex-1 overflow-auto overscroll-none bg-muted"
       >
         {labels.length === 0 ? (
-          <p className="p-6 text-sm text-muted-foreground">
-            {m.empty_preview()}
-          </p>
+          <div className="preview-empty-state flex min-h-full flex-col">
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle className="text-base font-medium">
+                  {m.empty_preview_title()}
+                </EmptyTitle>
+                <EmptyDescription className="max-w-64 text-inherit">
+                  {m.empty_preview()}
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+            <p className="px-6 pb-6 text-center text-xs">
+              <a
+                href="https://labelary.com"
+                target="_blank"
+                rel="noreferrer"
+                className="underline decoration-current/40 underline-offset-4 hover:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+              >
+                {m.empty_preview_credit()}
+              </a>
+            </p>
+          </div>
         ) : (
           <div
             className="flex w-max min-w-full flex-col items-center gap-6"

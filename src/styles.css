@@ -141,6 +141,21 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+.preview-empty-state {
+  color: color-mix(in srgb, var(--foreground) 27%, var(--muted));
+  text-shadow:
+    0 1px 0 color-mix(in srgb, var(--foreground) 9%, transparent),
+    0 -1px 1px color-mix(in srgb, var(--background) 65%, transparent);
+}
+
+.preview-empty-state [data-slot='empty-title'] {
+  color: color-mix(in srgb, var(--foreground) 30%, var(--muted));
+}
+
+.preview-empty-state [data-slot='empty-description'] {
+  color: color-mix(in srgb, var(--foreground) 24%, var(--muted));
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
