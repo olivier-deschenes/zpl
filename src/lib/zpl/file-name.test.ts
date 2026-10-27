@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { toFileBaseName } from './export'
+import { toFileBaseName } from './file-name'
 
 describe('toFileBaseName', () => {
   it('keeps a plain name', () => {

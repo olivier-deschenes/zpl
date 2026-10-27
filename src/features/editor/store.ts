@@ -1,6 +1,6 @@
 import { createStore } from '@tanstack/react-store'
 
-import { DEFAULT_FILE_NAME, toFileBaseName } from '#/lib/zpl/export'
+import { DEFAULT_FILE_NAME, toFileBaseName } from '#/lib/zpl/file-name'
 import {
   DEFAULT_SETTINGS,
   DENSITIES,
@@ -74,10 +74,12 @@ export function setSource(id: string, source: string) {
 }
 
 export function setSettings(id: string, settings: Partial<LabelSettings>) {
-  updateFile(id, (file) => ({
-    ...file,
-    settings: { ...file.settings, ...settings },
-  }))
+  updateFile(id, (file) => {
+    const next = { ...file.settings, ...settings }
+    return sameSettings(file.settings, next)
+      ? file
+      : { ...file, settings: next }
+  })
 }
 
 export function setFileName(id: string, name: string) {

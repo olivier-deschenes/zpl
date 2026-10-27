@@ -55,6 +55,27 @@ describe('server initialization', () => {
 })
 
 describe('saved files', () => {
+  it('only persists settings when a value changes', async () => {
+    const app = await load()
+    const before = app.editorStore.state
+    const id = before.openFileIds[0]
+    storage.setItem.mockClear()
+
+    app.setSettings(id, {})
+    app.setSettings(id, { ...DEFAULT_SETTINGS })
+
+    expect(app.editorStore.state).toBe(before)
+    expect(storage.setItem).not.toHaveBeenCalled()
+
+    app.setSettings(id, { widthIn: 2 })
+
+    expect(app.selectFile(app.editorStore.state, id)?.settings).toEqual({
+      ...DEFAULT_SETTINGS,
+      widthIn: 2,
+    })
+    expect(storage.setItem).toHaveBeenCalledTimes(1)
+  })
+
   it('keeps source, settings, name, and tab selection across close, reload, and reopen', async () => {
     let app = await load()
     const first = app.editorStore.state.openFileIds[0]

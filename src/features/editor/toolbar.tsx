@@ -17,13 +17,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '#/components/ui/tooltip'
-import {
-  DEFAULT_FILE_NAME,
-  copyBase64,
-  copyZpl,
-  exportAs,
-} from '#/lib/zpl/export'
+import { copyBase64, copyZpl, exportAs } from '#/lib/zpl/export'
 import type { ExportFormat } from '#/lib/zpl/export'
+import { DEFAULT_FILE_NAME } from '#/lib/zpl/file-name'
 import { m } from '#/paraglide/messages'
 import { DownloadDialog } from './download-dialog'
 import { useCopyShareLink } from './share-link'

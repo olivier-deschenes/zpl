@@ -19,7 +19,7 @@ import {
   InputGroupText,
 } from '#/components/ui/input-group'
 import { Label } from '#/components/ui/label'
-import { toFileBaseName } from '#/lib/zpl/export'
+import { toFileBaseName } from '#/lib/zpl/file-name'
 import type { ExportFormat } from '#/lib/zpl/export'
 import { m } from '#/paraglide/messages'
 

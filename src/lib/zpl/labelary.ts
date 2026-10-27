@@ -2,6 +2,7 @@ import { AsyncQueuer } from '@tanstack/react-pacer'
 
 import type * as Pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
 
+import { cacheKey, readCached, writeCached } from './render-cache'
 import { labelDots } from './settings'
 import type { LabelSettings, PrintDensity } from './settings'
 
@@ -10,9 +11,6 @@ const MM_PER_INCH = 25.4
 const POINTS_PER_INCH = 72
 /** Labelary's free tier allows 3 requests a second from each client. */
 const REQUEST_SPACING_MS = 350
-const CACHE_NAME = 'labelary-renders'
-/** Renders kept across reloads, each one job's PDF. */
-const MAX_CACHED_RENDERS = 500
 
 export interface LabelaryLabel {
   canvas: HTMLCanvasElement
@@ -176,56 +174,6 @@ async function requestLabels(
 
   if (key) void writeCached(key, response.clone())
   return response
-}
-
-/**
- * Successful renders are kept in Cache Storage so a reload, or going back to
- * an earlier version of a label, costs no request against the rate limit.
- * Unavailable outside secure contexts, where every render is fetched.
- */
-async function openCache() {
-  if (typeof caches === 'undefined') return undefined
-  return caches.open(CACHE_NAME).catch(() => undefined)
-}
-
-/** The render's URL with a hash of the ZPL, since Cache Storage keys on GETs. */
-async function cacheKey(url: string, source: string) {
-  if (typeof crypto === 'undefined' || !('subtle' in crypto)) return undefined
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(source),
-  )
-  const hash = Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, '0'),
-  ).join('')
-  return `${url}?zpl=${hash}`
-}
-
-async function readCached(key: string) {
-  const cache = await openCache()
-  return (await cache?.match(key).catch(() => undefined)) ?? undefined
-}
-
-async function writeCached(key: string, response: Response) {
-  const cache = await openCache()
-  if (!cache) return
-  try {
-    // Copied into a plain response so the headers we read stay readable.
-    const headers = new Headers({ 'Content-Type': 'application/pdf' })
-    for (const name of ['X-Total-Count', 'X-Warnings']) {
-      const value = response.headers.get(name)
-      if (value !== null) headers.set(name, value)
-    }
-    await cache.put(key, new Response(await response.blob(), { headers }))
-
-    // Keys come back oldest first, so drop from the front.
-    const keys = await cache.keys()
-    for (const request of keys.slice(0, keys.length - MAX_CACHED_RENDERS)) {
-      await cache.delete(request)
-    }
-  } catch {
-    // A full or unavailable cache only means the next render is fetched.
-  }
 }
 
 /** Labelary converts at dpmm × 25.4 dpi with the fraction dropped. */

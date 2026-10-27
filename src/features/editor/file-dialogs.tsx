@@ -29,7 +29,7 @@ import {
   InputGroupText,
 } from '#/components/ui/input-group'
 import { Label } from '#/components/ui/label'
-import { toFileBaseName } from '#/lib/zpl/export'
+import { toFileBaseName } from '#/lib/zpl/file-name'
 import { m } from '#/paraglide/messages'
 import { deleteFile, setFileName } from './store'
 import type { EditorFile } from './store'
