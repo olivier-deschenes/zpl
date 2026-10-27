@@ -11,6 +11,7 @@ import { Button } from '#/components/ui/button'
 import { useElementSize } from '#/hooks/use-element-size'
 import { DEFAULT_SETTINGS, dpiFor } from '#/lib/zpl/settings'
 import { m } from '#/paraglide/messages'
+import { DiskStatusButton } from './disk-status'
 import { LabelPreview } from './label-preview'
 import { SettingsPopover } from './settings-popover'
 import { editorStore, selectFile, setActiveFile } from './store'
@@ -104,6 +105,7 @@ export function EditorPanel({
         >
           {title}
         </h2>
+        <DiskStatusButton id={panelId} />
         <SizeButton panelId={panelId} />
         <PanelToolbar
           panelId={panelId}

@@ -17,6 +17,8 @@ export interface EditorFile {
   settings: LabelSettings
   /** The file's name, without the .zpl extension. */
   fileName: string
+  /** Kept in sync with a file on disk instead of living only in the browser. */
+  disk?: true
 }
 
 export interface EditorState {
@@ -183,16 +185,39 @@ export function openSharedLabel(
   settings: Partial<Record<keyof LabelSettings, unknown>>,
 ) {
   const cleanSettings = sanitizeSettings(settings)
-  const state = editorStore.state
-  const existing = state.files.find(
+  const existing = editorStore.state.files.find(
     (file) =>
       file.source === source && sameSettings(file.settings, cleanSettings),
   )
+  showFirst(existing ?? createFile(source, cleanSettings))
+}
+
+/** Adds a file opened from disk, in front of the open tabs. */
+export function openDiskFile(source: string, name: string): string {
+  const state = editorStore.state
+  const active = state.activeFileId
+    ? selectFile(state, state.activeFileId)
+    : undefined
+  const file: EditorFile = {
+    ...createFile(source, active?.settings ?? DEFAULT_SETTINGS),
+    // The disk's name, even if a browser file already uses it.
+    fileName:
+      toFileBaseName(name.replace(/\.(txt|prn)$/i, ''), 'zpl') ||
+      DEFAULT_FILE_NAME,
+    disk: true,
+  }
+  showFirst(file)
+  return file.id
+}
+
+/** Shows `file` as the first tab, displacing a tab only when all are used. */
+function showFirst(file: EditorFile) {
+  const state = editorStore.state
+  const existing = selectFile(state, file.id)
   if (existing && state.openFileIds.includes(existing.id)) {
     setActiveFile(existing.id)
     return
   }
-  const file = existing ?? createFile(source, cleanSettings)
   const only =
     state.openFileIds.length === 1
       ? selectFile(state, state.openFileIds[0])
@@ -406,6 +431,7 @@ function sanitizeFiles(values: unknown[]): EditorFile[] {
       source: typeof value.source === 'string' ? value.source : '',
       settings: sanitizeSettings(record(value.settings)),
       fileName: name || availableName(DEFAULT_FILE_NAME, files),
+      ...(value.disk === true && { disk: true as const }),
     })
   }
   return files

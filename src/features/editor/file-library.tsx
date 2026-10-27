@@ -25,6 +25,7 @@ import {
   TooltipTrigger,
 } from '#/components/ui/tooltip'
 import { m } from '#/paraglide/messages'
+import { DiskIcon, OpenFromDiskButton } from './disk-status'
 import { DeleteFileDialog, RenameFileDialog } from './file-dialogs'
 import {
   MAX_PANELS,
@@ -89,7 +90,11 @@ export function FileLibrary({ open, onOpenChange }: FileLibraryProps) {
                 if (openFile(file.id)) onOpenChange(false)
               }}
             >
-              <IconFileCode className="shrink-0 text-muted-foreground" />
+              {file.disk ? (
+                <DiskIcon id={file.id} className="size-4" />
+              ) : (
+                <IconFileCode className="shrink-0 text-muted-foreground" />
+              )}
               <span className="truncate">{name}</span>
             </Button>
           </TooltipTrigger>
@@ -106,14 +111,21 @@ export function FileLibrary({ open, onOpenChange }: FileLibraryProps) {
             <IconX />
           </FileAction>
         )}
+        {/* A disk file keeps the name it has on disk. */}
+        {!file.disk && (
+          <FileAction
+            label={m.rename_file_named({ name })}
+            onClick={() => showDialog('rename', file)}
+          >
+            <IconPencil />
+          </FileAction>
+        )}
         <FileAction
-          label={m.rename_file_named({ name })}
-          onClick={() => showDialog('rename', file)}
-        >
-          <IconPencil />
-        </FileAction>
-        <FileAction
-          label={m.delete_file_named({ name })}
+          label={
+            file.disk
+              ? m.remove_file_named({ name })
+              : m.delete_file_named({ name })
+          }
           onClick={() => showDialog('delete', file)}
         >
           <IconTrash />
@@ -211,7 +223,7 @@ export function FileLibrary({ open, onOpenChange }: FileLibraryProps) {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2 border-t pt-3">
+          <div className="flex flex-wrap items-center gap-2 border-t pt-3">
             <Button
               size="sm"
               variant="outline"
@@ -223,6 +235,11 @@ export function FileLibrary({ open, onOpenChange }: FileLibraryProps) {
               <IconPlus />
               {m.new_file()}
             </Button>
+            <OpenFromDiskButton
+              size="sm"
+              variant="outline"
+              onOpened={() => onOpenChange(false)}
+            />
             {storageStatus === 'saved' && (
               <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
                 <IconCheck className="size-3" />

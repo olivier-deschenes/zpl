@@ -20,6 +20,8 @@ import {
 } from '#/components/ui/resizable'
 import { AppBar } from '#/features/editor/app-bar'
 import type { ComparePair } from '#/features/editor/app-bar'
+import { startDiskSync } from '#/features/editor/disk-files'
+import { OpenFromDiskButton } from '#/features/editor/disk-status'
 import { EditorPanel } from '#/features/editor/editor-panel'
 import { openShareLink } from '#/features/editor/share-link'
 import { addFile, editorStore, setActiveFile } from '#/features/editor/store'
@@ -58,6 +60,8 @@ function EditorPage() {
     comparePair && comparePair.every((id) => panelIds.includes(id))
       ? comparePair
       : null
+
+  useEffect(startDiskSync, [])
 
   useEffect(() => {
     if (comparePair && !comparePair.every((id) => panelIds.includes(id)))
@@ -116,6 +120,7 @@ function EditorPage() {
                     {m.open_saved_file()}
                   </Button>
                 )}
+                <OpenFromDiskButton variant="outline" />
                 <Button onClick={() => addFile()}>
                   <IconPlus />
                   {m.new_file()}

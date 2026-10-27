@@ -10,6 +10,7 @@ import {
   TooltipTrigger,
 } from '#/components/ui/tooltip'
 import { m } from '#/paraglide/messages'
+import { DiskIcon } from './disk-status'
 import { closeFile, editorStore, selectFile } from './store'
 
 export function FileTabs() {
@@ -75,6 +76,7 @@ function FileTab({ id, onClose }: { id: string; onClose: () => void }) {
               }
             }}
           >
+            <DiskIcon id={id} />
             <span className="truncate">{name}</span>
           </TabsTrigger>
         </TooltipTrigger>

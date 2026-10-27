@@ -102,5 +102,18 @@
   "no_open_files": "No files open",
   "no_open_files_hint": "Your saved files are still in Files. Open one or create a new file.",
   "empty_library_hint": "Create a file to start writing ZPL. It will be saved in this browser.",
-  "open_saved_file": "Open a saved file"
+  "open_saved_file": "Open a saved file",
+  "open_from_disk": "Open from disk",
+  "open_from_disk_hint": "Open a .zpl file and keep it in sync: your edits save to the file, and changes made elsewhere reload here.",
+  "open_from_disk_unsupported": "Opening files from disk needs Chrome or Edge. You can still drop a file on the editor.",
+  "disk_synced": "{name} is saved on disk, not in this browser. Edits save to the file and changes made elsewhere reload.",
+  "disk_permission": "Allow access to {name} again to keep it in sync with the disk.",
+  "disk_missing": "{name} was moved or deleted on disk. Find it to link it again.",
+  "disk_error": "{name} could not be read or saved on disk. Reconnect to try again.",
+  "disk_reconnect": "Reconnect",
+  "disk_find": "Find file",
+  "remove_disk_file_hint": "This removes the file from this list. The file on disk is kept.",
+  "remove_file": "Remove file",
+  "remove_file_named": "Remove {name}",
+  "remove_file_title": "Remove {name}?"
 }

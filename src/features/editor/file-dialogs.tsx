@@ -57,10 +57,12 @@ export function DeleteFileDialog({
       >
         <AlertDialogHeader>
           <AlertDialogTitle className="break-words">
-            {m.delete_file_title({ name: `${file.fileName}.zpl` })}
+            {file.disk
+              ? m.remove_file_title({ name: `${file.fileName}.zpl` })
+              : m.delete_file_title({ name: `${file.fileName}.zpl` })}
           </AlertDialogTitle>
           <AlertDialogDescription>
-            {m.delete_file_hint()}
+            {file.disk ? m.remove_disk_file_hint() : m.delete_file_hint()}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -69,7 +71,7 @@ export function DeleteFileDialog({
             variant="destructive"
             onClick={() => deleteFile(file.id)}
           >
-            {m.delete_file()}
+            {file.disk ? m.remove_file() : m.delete_file()}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

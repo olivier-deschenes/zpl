@@ -328,3 +328,29 @@ describe('shared files', () => {
     expect(app.editorStore.state.activeFileId).toBe(first)
   })
 })
+
+describe('disk files', () => {
+  it('opens a disk file under its own name in place of the sample', async () => {
+    const app = await load()
+    app.addFile()
+    const id = app.openDiskFile('^XA^XZ', 'label.zpl')
+    const file = app.selectFile(app.editorStore.state, id)
+    expect(file).toMatchObject({
+      source: '^XA^XZ',
+      fileName: 'label',
+      disk: true,
+    })
+    expect(app.editorStore.state.openFileIds[0]).toBe(id)
+    expect(app.editorStore.state.activeFileId).toBe(id)
+  })
+
+  it('remembers which files live on disk across reloads', async () => {
+    const app = await load()
+    const id = app.openDiskFile('^XA^XZ', 'shipping.txt')
+    const reloaded = await reload()
+    expect(reloaded.selectFile(reloaded.editorStore.state, id)).toMatchObject({
+      fileName: 'shipping',
+      disk: true,
+    })
+  })
+})
