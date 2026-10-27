@@ -11,7 +11,7 @@ import { decodeBase64Zpl } from '#/lib/zpl/base64'
 import type { LabelaryWarning } from '#/lib/zpl/labelary'
 import { DEFAULT_SETTINGS, dpiFor } from '#/lib/zpl/settings'
 import { m } from '#/paraglide/messages'
-import { editorStore, selectPanel, setSource } from './store'
+import { editorStore, selectFile, setSource } from './store'
 import type { LabelRender } from './use-label-render'
 import { zpl, zplHelp } from './zpl-language'
 
@@ -73,10 +73,10 @@ interface ZplEditorProps {
 export function ZplEditor({ panelId, render, autoFocus }: ZplEditorProps) {
   const source = useSelector(
     editorStore,
-    (state) => selectPanel(state, panelId)?.source ?? '',
+    (state) => selectFile(state, panelId)?.source ?? '',
   )
   const dpi = useSelector(editorStore, (state) =>
-    dpiFor(selectPanel(state, panelId)?.settings.dpmm ?? DEFAULT_SETTINGS.dpmm),
+    dpiFor(selectFile(state, panelId)?.settings.dpmm ?? DEFAULT_SETTINGS.dpmm),
   )
   const explain = useSelector(editorStore, (state) => state.explain)
   const [view, setView] = useState<EditorView | null>(null)

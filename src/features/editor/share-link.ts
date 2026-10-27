@@ -6,7 +6,7 @@ import {
   decodeShareHash,
   encodeShareHash,
 } from '#/lib/zpl/share'
-import { editorStore, openSharedLabel, selectPanel } from './store'
+import { editorStore, openSharedLabel, selectFile } from './store'
 
 /**
  * Opens the label carried by a share link's fragment. Returns whether the
@@ -32,7 +32,7 @@ export function useCopyShareLink(panelId: string) {
   const router = useRouter()
 
   return async () => {
-    const panel = selectPanel(editorStore.state, panelId)
+    const panel = selectFile(editorStore.state, panelId)
     if (!panel?.source.trim()) return
 
     const { href } = router.buildLocation({

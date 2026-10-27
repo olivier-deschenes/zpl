@@ -32,7 +32,7 @@ import {
 } from '#/lib/zpl/settings'
 import type { PrintDensity } from '#/lib/zpl/settings'
 import { m } from '#/paraglide/messages'
-import { editorStore, selectPanel, setSettings } from './store'
+import { editorStore, selectFile, setSettings } from './store'
 
 /** Opens the panel's label settings from `children`, the trigger button. */
 export function SettingsPopover({
@@ -84,7 +84,7 @@ const settingsSchema = z.object({
 function SettingsForm({ panelId }: { panelId: string }) {
   const id = useId()
   const settings =
-    selectPanel(editorStore.state, panelId)?.settings ?? DEFAULT_SETTINGS
+    selectFile(editorStore.state, panelId)?.settings ?? DEFAULT_SETTINGS
 
   const form = useForm({
     defaultValues: {

@@ -5,7 +5,6 @@ import {
   IconCopy,
   IconCopyPlus,
   IconLink,
-  IconX,
 } from '@tabler/icons-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSelector } from '@tanstack/react-store'
@@ -28,14 +27,7 @@ import type { ExportFormat } from '#/lib/zpl/export'
 import { m } from '#/paraglide/messages'
 import { DownloadDialog } from './download-dialog'
 import { useCopyShareLink } from './share-link'
-import {
-  MAX_PANELS,
-  duplicatePanel,
-  editorStore,
-  removePanel,
-  selectPanel,
-  setFileName,
-} from './store'
+import { MAX_PANELS, duplicateFile, editorStore, selectFile } from './store'
 import { labelRenderQuery } from './use-label-render'
 
 /** How long a copy button shows its check mark. */
@@ -52,8 +44,11 @@ interface PanelToolbarProps {
  * leaves out the least used ones so the row never wraps.
  */
 export function PanelToolbar({ panelId, labelCount }: PanelToolbarProps) {
-  const panelCount = useSelector(editorStore, (state) => state.panels.length)
-  const livePanel = () => selectPanel(editorStore.state, panelId)
+  const panelCount = useSelector(
+    editorStore,
+    (state) => state.openFileIds.length,
+  )
+  const livePanel = () => selectFile(editorStore.state, panelId)
   const copyShareLink = useCopyShareLink(panelId)
 
   return (
@@ -79,19 +74,11 @@ export function PanelToolbar({ panelId, labelCount }: PanelToolbarProps) {
       <IconButton
         label={m.duplicate_panel()}
         disabled={panelCount >= MAX_PANELS}
-        onClick={() => duplicatePanel(panelId)}
+        onClick={() => duplicateFile(panelId)}
         className="@max-md:hidden"
       >
         <IconCopyPlus />
       </IconButton>
-      {panelCount > 1 && (
-        <IconButton
-          label={m.close_panel()}
-          onClick={() => removePanel(panelId)}
-        >
-          <IconX />
-        </IconButton>
-      )}
     </div>
   )
 }
@@ -175,30 +162,21 @@ function DownloadButtons({
     defaultName: DEFAULT_FILE_NAME,
   })
   // Exports read the live source, not the debounced one the preview shows.
-  const livePanel = () => selectPanel(editorStore.state, panelId)
+  const livePanel = () => selectFile(editorStore.state, panelId)
   const queryClient = useQueryClient()
 
   const promptFileName = (format: ExportFormat) => {
-    const { panels } = editorStore.state
-    const index = panels.findIndex((panel) => panel.id === panelId)
-    // Number the default once there are several panels, so their
-    // downloads don't collide.
-    const fallback =
-      panels.length > 1
-        ? `${DEFAULT_FILE_NAME}-${index + 1}`
-        : DEFAULT_FILE_NAME
     setDialog((current) => ({
       id: current.id + 1,
       open: true,
       format,
-      defaultName: livePanel()?.fileName ?? fallback,
+      defaultName: livePanel()?.fileName ?? DEFAULT_FILE_NAME,
     }))
   }
 
   const download = async (format: ExportFormat, baseName: string) => {
     const panel = livePanel()
     if (!panel) return
-    setFileName(panelId, baseName)
     // Unchanged since the preview caught up, this is the render it shows.
     const labels =
       format === 'zpl'

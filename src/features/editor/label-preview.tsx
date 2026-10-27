@@ -8,7 +8,7 @@ import {
   useState,
 } from 'react'
 import { IconAlertTriangle, IconMinus, IconPlus } from '@tabler/icons-react'
-import { shallow, useSelector } from '@tanstack/react-store'
+import { useSelector } from '@tanstack/react-store'
 import { cn } from 'cn'
 
 import { Button } from '#/components/ui/button'
@@ -34,7 +34,7 @@ import { m } from '#/paraglide/messages'
 import { getLocale } from '#/paraglide/runtime'
 import {
   editorStore,
-  selectPanel,
+  selectFile,
   setPreviewZoom,
   setSettings,
   zoomStore,
@@ -122,26 +122,26 @@ export function LabelPreview({
   const syncZoom = useSelector(editorStore, (state) => state.syncZoom)
   const [viewportRef, viewport, viewportElement] =
     useElementSize<HTMLDivElement>()
-  const panelIds = useSelector(
+  const localName = useSelector(
     editorStore,
-    (state) => state.panels.map((panel) => panel.id),
-    { compare: shallow },
+    (state) => `${selectFile(state, panelId)?.fileName ?? ''}.zpl`,
+  )
+  const remoteName = useSelector(editorStore, (state) =>
+    target ? `${selectFile(state, target)?.fileName ?? ''}.zpl` : '',
   )
   const [compareMode, setCompareMode] = useState<CompareMode>('side-by-side')
   const view: View = target ? compareMode : 'single'
   const other = useOtherPanelRender(target ?? undefined)
 
-  const panelName = (id: string) =>
-    m.panel_title({ index: panelIds.indexOf(id) + 1 })
   const compared: Compared | undefined = target
     ? {
         labels: other.render?.labels ?? [],
         stale: other.isStale,
-        placeholder: m.compare_no_panel_label({ name: panelName(target) }),
-        localTitle: panelName(panelId),
-        remoteTitle: panelName(target),
-        onlyLocal: m.diff_only({ name: panelName(panelId) }),
-        onlyRemote: m.diff_only({ name: panelName(target) }),
+        placeholder: m.compare_no_panel_label({ name: remoteName }),
+        localTitle: localName,
+        remoteTitle: remoteName,
+        onlyLocal: m.diff_only({ name: localName }),
+        onlyRemote: m.diff_only({ name: remoteName }),
       }
     : undefined
 
@@ -401,7 +401,7 @@ export function LabelPreview({
         otherPanel={
           target && other.render
             ? {
-                name: panelName(target),
+                name: remoteName,
                 labelCount: other.render.labels.length,
               }
             : undefined
@@ -788,7 +788,7 @@ function StatusLine({
 }) {
   const settings = useSelector(
     editorStore,
-    (state) => selectPanel(state, panelId)?.settings ?? DEFAULT_SETTINGS,
+    (state) => selectFile(state, panelId)?.settings ?? DEFAULT_SETTINGS,
   )
   const labels = render?.labels ?? []
   const problems = render?.warnings.length ?? 0

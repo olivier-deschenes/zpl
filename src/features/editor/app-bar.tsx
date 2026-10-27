@@ -1,5 +1,6 @@
 import {
   IconChevronDown,
+  IconDots,
   IconGitCompare,
   IconPlus,
   IconZoomScan,
@@ -9,13 +10,17 @@ import { shallow, useSelector } from '@tanstack/react-store'
 import { Button } from '#/components/ui/button'
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '#/components/ui/dropdown-menu'
-import { Separator } from '#/components/ui/separator'
 import { Toggle } from '#/components/ui/toggle'
 import {
   Tooltip,
@@ -23,54 +28,92 @@ import {
   TooltipTrigger,
 } from '#/components/ui/tooltip'
 import { m } from '#/paraglide/messages'
+import { FileLibrary } from './file-library'
+import { FileTabs } from './file-tabs'
 import {
   MAX_PANELS,
-  addPanel,
+  addFile,
   editorStore,
+  selectFile,
   setExplain,
   setSyncZoom,
 } from './store'
 
-/** Two panels to compare, in page order. */
+/** Two open files to compare, in page order. */
 export type ComparePair = readonly [string, string]
-
-/** The compare menu's value for comparing nothing; never a pair. */
 const NO_PAIR = 'nothing'
 
-interface AppBarProps {
-  /** The pair being compared, if any. */
+interface CompareProps {
   compare: ComparePair | null
   onCompareChange: (compare: ComparePair | null) => void
 }
 
-/** Controls that apply to every panel, above them all. */
-export function AppBar({ compare, onCompareChange }: AppBarProps) {
+interface AppBarProps extends CompareProps {
+  libraryOpen: boolean
+  onLibraryOpenChange: (open: boolean) => void
+}
+
+/** Files and workspace controls share the existing single navigation row. */
+export function AppBar({
+  libraryOpen,
+  onLibraryOpenChange,
+  ...compareProps
+}: AppBarProps) {
   return (
-    <header className="flex h-11 shrink-0 items-center gap-2 border-b pr-2 pl-3">
+    <header className="flex h-11 min-w-0 shrink-0 items-center gap-1 border-b px-2 sm:pl-3">
       <img
         src="/logo.svg"
         alt=""
         width={20}
         height={20}
-        className="size-5 shrink-0 dark:invert"
+        className="mr-1 size-5 shrink-0 dark:invert"
       />
-      <h1 className="truncate text-xs font-medium max-sm:sr-only">
-        {m.app_title()}
-      </h1>
-      <div className="ml-auto flex items-center gap-1">
+      <h1 className="sr-only">{m.app_title()}</h1>
+      <FileLibrary open={libraryOpen} onOpenChange={onLibraryOpenChange} />
+      <FileTabs />
+      <NewFileButton />
+      <div className="ml-1 hidden shrink-0 items-center gap-1 border-l pl-2 xl:flex">
         <ExplainToggle />
         <SyncZoomToggle />
-        <CompareControl compare={compare} onCompareChange={onCompareChange} />
-        <Separator orientation="vertical" className="mx-1 my-3" />
-        <AddPanelButton />
+        <CompareControl {...compareProps} />
+      </div>
+      <div className="shrink-0 xl:hidden">
+        <ViewMenu {...compareProps} />
       </div>
     </header>
   )
 }
 
+function NewFileButton() {
+  const full = useSelector(
+    editorStore,
+    (state) => state.openFileIds.length >= MAX_PANELS,
+  )
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="shrink-0" tabIndex={full ? 0 : undefined}>
+          <Button
+            id="new-file"
+            variant="ghost"
+            size="icon-sm"
+            disabled={full}
+            aria-label={m.new_file()}
+            onClick={() => addFile()}
+          >
+            <IconPlus />
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        {full ? m.open_file_limit({ count: MAX_PANELS }) : m.new_file()}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 function ExplainToggle() {
   const explain = useSelector(editorStore, (state) => state.explain)
-
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -88,12 +131,13 @@ function ExplainToggle() {
   )
 }
 
-/** Only shown once there is more than one preview to keep in step. */
 function SyncZoomToggle() {
   const syncZoom = useSelector(editorStore, (state) => state.syncZoom)
-  const several = useSelector(editorStore, (state) => state.panels.length > 1)
+  const several = useSelector(
+    editorStore,
+    (state) => state.openFileIds.length > 1,
+  )
   if (!several) return null
-
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -102,9 +146,9 @@ function SyncZoomToggle() {
           size="sm"
           pressed={syncZoom}
           onPressedChange={setSyncZoom}
+          aria-label={m.sync_zoom()}
         >
           <IconZoomScan />
-          <span className="max-sm:sr-only">{m.sync_zoom()}</span>
         </Toggle>
       </TooltipTrigger>
       <TooltipContent>{m.sync_zoom_hint()}</TooltipContent>
@@ -112,110 +156,137 @@ function SyncZoomToggle() {
   )
 }
 
-/**
- * Compares the two panels in one press, or picks which two when there are
- * more.
- */
-function CompareControl({ compare, onCompareChange }: AppBarProps) {
-  const panelIds = useSelector(
+function useComparePairs() {
+  const ids = useSelector(editorStore, (state) => state.openFileIds)
+  const names = useSelector(
     editorStore,
-    (state) => state.panels.map((panel) => panel.id),
+    (state) =>
+      state.openFileIds.map(
+        (id) => `${selectFile(state, id)?.fileName ?? ''}.zpl`,
+      ),
     { compare: shallow },
   )
-  const name = (id: string) =>
-    m.panel_title({ index: panelIds.indexOf(id) + 1 })
+  return ids.flatMap((first, index) =>
+    ids.slice(index + 1).map((second, offset) => ({
+      pair: [first, second] as const,
+      value: `${first} ${second}`,
+      label: m.compare_pair({
+        first: names[index],
+        second: names[index + offset + 1],
+      }),
+    })),
+  )
+}
 
-  if (panelIds.length < 2) {
+function CompareOptions({ compare, onCompareChange }: CompareProps) {
+  const pairs = useComparePairs()
+  return (
+    <DropdownMenuRadioGroup
+      value={compare?.join(' ') ?? NO_PAIR}
+      onValueChange={(value) =>
+        onCompareChange(
+          pairs.find((pair) => pair.value === value)?.pair ?? null,
+        )
+      }
+    >
+      <DropdownMenuRadioItem value={NO_PAIR}>
+        {m.compare_nothing()}
+      </DropdownMenuRadioItem>
+      {pairs.map(({ value, label }) => (
+        <DropdownMenuRadioItem
+          key={value}
+          value={value}
+          className="break-words"
+        >
+          {label}
+        </DropdownMenuRadioItem>
+      ))}
+    </DropdownMenuRadioGroup>
+  )
+}
+
+function CompareControl(props: CompareProps) {
+  const pairs = useComparePairs()
+  if (pairs.length < 2)
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          {/* A disabled button gets no pointer events, so this holds the tooltip. */}
-          <span tabIndex={0}>
-            <Toggle variant="outline" size="sm" disabled>
+          <span tabIndex={pairs.length === 0 ? 0 : undefined}>
+            <Toggle
+              variant="outline"
+              size="sm"
+              disabled={pairs.length === 0}
+              pressed={props.compare !== null}
+              onPressedChange={(pressed) =>
+                props.onCompareChange(pressed ? pairs[0].pair : null)
+              }
+            >
               <IconGitCompare />
               {m.compare()}
             </Toggle>
           </span>
         </TooltipTrigger>
-        <TooltipContent>{m.compare_add_panel_hint()}</TooltipContent>
+        <TooltipContent>
+          {pairs.length ? m.compare_panels() : m.compare_add_panel_hint()}
+        </TooltipContent>
       </Tooltip>
     )
-  }
-
-  if (panelIds.length === 2) {
-    const [first, second] = panelIds
-    return (
-      <Toggle
-        variant="outline"
-        size="sm"
-        pressed={compare !== null}
-        onPressedChange={(pressed) =>
-          onCompareChange(pressed ? [first, second] : null)
-        }
-      >
-        <IconGitCompare />
-        {m.compare()}
-      </Toggle>
-    )
-  }
-
-  const pairs = panelIds.flatMap((first, index) =>
-    panelIds.slice(index + 1).map((second) => [first, second] as const),
-  )
-  const pairKey = ([first, second]: ComparePair) => `${first} ${second}`
-  const pairName = ([first, second]: ComparePair) =>
-    m.compare_pair({ first: name(first), second: name(second) })
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Toggle variant="outline" size="sm" pressed={compare !== null}>
+        <Toggle variant="outline" size="sm" pressed={props.compare !== null}>
           <IconGitCompare />
-          {compare ? pairName(compare) : m.compare()}
+          {m.compare()}
           <IconChevronDown />
         </Toggle>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
+      <DropdownMenuContent align="end" className="max-w-80">
         <DropdownMenuLabel>{m.compare_panels()}</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={compare ? pairKey(compare) : NO_PAIR}
-          onValueChange={(value) =>
-            onCompareChange(
-              pairs.find((pair) => pairKey(pair) === value) ?? null,
-            )
-          }
-        >
-          <DropdownMenuRadioItem value={NO_PAIR}>
-            {m.compare_nothing()}
-          </DropdownMenuRadioItem>
-          {pairs.map((pair) => (
-            <DropdownMenuRadioItem key={pairKey(pair)} value={pairKey(pair)}>
-              {pairName(pair)}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
+        <CompareOptions {...props} />
       </DropdownMenuContent>
     </DropdownMenu>
   )
 }
 
-/** Opens an empty panel after the last one, sized like it. */
-function AddPanelButton() {
-  const lastId = useSelector(editorStore, (state) => state.panels.at(-1)?.id)
-  const full = useSelector(
+function ViewMenu(props: CompareProps) {
+  const explain = useSelector(editorStore, (state) => state.explain)
+  const syncZoom = useSelector(editorStore, (state) => state.syncZoom)
+  const several = useSelector(
     editorStore,
-    (state) => state.panels.length >= MAX_PANELS,
+    (state) => state.openFileIds.length > 1,
   )
-
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      disabled={full || !lastId}
-      onClick={() => lastId && addPanel(lastId)}
-    >
-      <IconPlus data-icon="inline-start" />
-      <span className="max-sm:sr-only">{m.add_panel()}</span>
-    </Button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon-sm" aria-label={m.view_options()}>
+          <IconDots />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuCheckboxItem
+          checked={explain}
+          onCheckedChange={setExplain}
+        >
+          {m.explain()}
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={syncZoom}
+          disabled={!several}
+          onCheckedChange={setSyncZoom}
+        >
+          {m.sync_zoom()}
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger disabled={!several}>
+            <IconGitCompare />
+            {m.compare()}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="max-w-72">
+            <CompareOptions {...props} />
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

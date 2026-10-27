@@ -13,7 +13,7 @@ import { DEFAULT_SETTINGS, dpiFor } from '#/lib/zpl/settings'
 import { m } from '#/paraglide/messages'
 import { LabelPreview } from './label-preview'
 import { SettingsPopover } from './settings-popover'
-import { editorStore, selectPanel } from './store'
+import { editorStore, selectFile, setActiveFile } from './store'
 import { PanelToolbar } from './toolbar'
 import { useLabelRender } from './use-label-render'
 import { ZplEditor } from './zpl-editor'
@@ -28,7 +28,6 @@ const SIZE_FORMAT = new Intl.NumberFormat(undefined, {
 
 interface EditorPanelProps {
   panelId: string
-  index: number
   count: number
   /** The page is phone-sized, so every panel stacks. */
   stacked: boolean
@@ -39,7 +38,6 @@ interface EditorPanelProps {
 
 export function EditorPanel({
   panelId,
-  index,
   count,
   stacked,
   compareTarget,
@@ -55,8 +53,14 @@ export function EditorPanel({
   const sideBySide =
     !stacked && count === 1 && (width === 0 || width >= SIDE_BY_SIDE_MIN_WIDTH)
   const labelFirst = count > 1
-  const title =
-    count === 1 ? m.editor_label() : m.panel_title({ index: index + 1 })
+  const title = useSelector(
+    editorStore,
+    (state) => `${selectFile(state, panelId)?.fileName ?? ''}.zpl`,
+  )
+  const active = useSelector(
+    editorStore,
+    (state) => state.activeFileId === panelId,
+  )
 
   const editor = (
     <ResizablePanel
@@ -85,13 +89,19 @@ export function EditorPanel({
   return (
     <section
       ref={sectionRef}
-      // The skip link lands on the first panel.
-      id={index === 0 ? 'editor' : undefined}
+      // The skip link follows the selected file, including on a phone.
+      id={active ? 'editor' : undefined}
+      tabIndex={-1}
       aria-labelledby={headingId}
+      onPointerDownCapture={() => setActiveFile(panelId)}
+      onFocusCapture={() => setActiveFile(panelId)}
       className="flex h-full min-w-0 flex-col"
     >
       <div className="@container flex h-10 shrink-0 items-center gap-0.5 border-b pr-1.5 pl-3">
-        <h2 id={headingId} className="shrink-0 text-xs font-medium">
+        <h2
+          id={headingId}
+          className="min-w-0 max-w-48 truncate text-xs font-medium"
+        >
           {title}
         </h2>
         <SizeButton panelId={panelId} />
@@ -115,7 +125,7 @@ export function EditorPanel({
 function SizeButton({ panelId }: { panelId: string }) {
   const settings = useSelector(
     editorStore,
-    (state) => selectPanel(state, panelId)?.settings ?? DEFAULT_SETTINGS,
+    (state) => selectFile(state, panelId)?.settings ?? DEFAULT_SETTINGS,
   )
 
   return (
