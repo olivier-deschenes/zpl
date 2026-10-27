@@ -3,8 +3,8 @@ import {
   IconBinary,
   IconCheck,
   IconCopy,
-  IconCopyPlus,
   IconLink,
+  IconX,
 } from '@tabler/icons-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSelector } from '@tanstack/react-store'
@@ -27,7 +27,7 @@ import type { ExportFormat } from '#/lib/zpl/export'
 import { m } from '#/paraglide/messages'
 import { DownloadDialog } from './download-dialog'
 import { useCopyShareLink } from './share-link'
-import { MAX_PANELS, duplicateFile, editorStore, selectFile } from './store'
+import { closeFile, editorStore, selectFile } from './store'
 import { labelRenderQuery } from './use-label-render'
 
 /** How long a copy button shows its check mark. */
@@ -44,10 +44,6 @@ interface PanelToolbarProps {
  * leaves out the least used ones so the row never wraps.
  */
 export function PanelToolbar({ panelId, labelCount }: PanelToolbarProps) {
-  const panelCount = useSelector(
-    editorStore,
-    (state) => state.openFileIds.length,
-  )
   const livePanel = () => selectFile(editorStore.state, panelId)
   const copyShareLink = useCopyShareLink(panelId)
 
@@ -71,16 +67,23 @@ export function PanelToolbar({ panelId, labelCount }: PanelToolbarProps) {
         className="@max-2xs:hidden"
       />
       <DownloadButtons panelId={panelId} labelCount={labelCount} />
-      <IconButton
-        label={m.duplicate_panel()}
-        disabled={panelCount >= MAX_PANELS}
-        onClick={() => duplicateFile(panelId)}
-        className="@max-md:hidden"
-      >
-        <IconCopyPlus />
+      <IconButton label={m.close_panel()} onClick={() => close(panelId)}>
+        <IconX />
       </IconButton>
     </div>
   )
+}
+
+/** Closing keeps the file saved and hands focus to the next tab. */
+function close(id: string) {
+  closeFile(id)
+  requestAnimationFrame(() => {
+    const next = document.querySelector<HTMLElement>(
+      '[role="tab"][data-state="active"]',
+    )
+    if (next) next.focus()
+    else document.getElementById('new-file')?.focus()
+  })
 }
 
 function IconButton({
