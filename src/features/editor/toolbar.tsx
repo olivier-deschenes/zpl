@@ -193,23 +193,19 @@ function DownloadButtons({
     <>
       <ButtonGroup aria-label={m.download()}>
         {DOWNLOADS.map(({ format, label }) => (
-          <Tooltip key={format}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="xs"
-                aria-label={label()}
-                className="px-1.5"
-                onClick={(event) => {
-                  triggerRef.current = event.currentTarget
-                  promptFileName(format)
-                }}
-              >
-                {format.toUpperCase()}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{label()}</TooltipContent>
-          </Tooltip>
+          <Button
+            key={format}
+            variant="outline"
+            size="xs"
+            aria-label={label()}
+            className="px-1.5"
+            onClick={(event) => {
+              triggerRef.current = event.currentTarget
+              promptFileName(format)
+            }}
+          >
+            {format.toUpperCase()}
+          </Button>
         ))}
       </ButtonGroup>
       <DownloadDialog

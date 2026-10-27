@@ -80,21 +80,16 @@ function FileTab({ id, onClose }: { id: string; onClose: () => void }) {
         </TooltipTrigger>
         <TooltipContent>{name}</TooltipContent>
       </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            tabIndex={-1}
-            aria-label={m.close_file_tab({ name })}
-            className="mr-0.5 shrink-0 text-muted-foreground"
-            onClick={onClose}
-          >
-            <IconX />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{m.close_tab_hint()}</TooltipContent>
-      </Tooltip>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        tabIndex={-1}
+        aria-label={m.close_file_tab({ name })}
+        className="mr-0.5 shrink-0 text-muted-foreground"
+        onClick={onClose}
+      >
+        <IconX />
+      </Button>
     </div>
   )
 }

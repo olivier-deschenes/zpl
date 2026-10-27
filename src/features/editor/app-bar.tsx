@@ -115,19 +115,14 @@ function NewFileButton() {
 function ExplainToggle() {
   const explain = useSelector(editorStore, (state) => state.explain)
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Toggle
-          variant="outline"
-          size="sm"
-          pressed={explain}
-          onPressedChange={setExplain}
-        >
-          {m.explain()}
-        </Toggle>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-64">{m.explain_hint()}</TooltipContent>
-    </Tooltip>
+    <Toggle
+      variant="outline"
+      size="sm"
+      pressed={explain}
+      onPressedChange={setExplain}
+    >
+      {m.explain()}
+    </Toggle>
   )
 }
 
@@ -209,7 +204,7 @@ function CompareControl(props: CompareProps) {
   const pairs = useComparePairs()
   if (pairs.length < 2)
     return (
-      <Tooltip>
+      <Tooltip open={pairs.length === 0 ? undefined : false}>
         <TooltipTrigger asChild>
           <span tabIndex={pairs.length === 0 ? 0 : undefined}>
             <Toggle

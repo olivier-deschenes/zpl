@@ -433,56 +433,41 @@ function ZoomControls({
 
   return (
     <div className="flex items-center">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label={m.zoom_out()}
-            className="text-muted-foreground"
-            disabled={smaller === undefined}
-            onClick={() => smaller && onZoomChange(smaller)}
-          >
-            <IconMinus />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{m.zoom_out()}</TooltipContent>
-      </Tooltip>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label={m.zoom_out()}
+        className="text-muted-foreground"
+        disabled={smaller === undefined}
+        onClick={() => smaller && onZoomChange(smaller)}
+      >
+        <IconMinus />
+      </Button>
       <span
         aria-label={m.zoom_level({ percent })}
         className="min-w-10 text-center"
       >
         {m.zoom_percent({ percent })}
       </span>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label={m.zoom_in()}
-            className="text-muted-foreground"
-            disabled={larger === undefined}
-            onClick={() => larger && onZoomChange(larger)}
-          >
-            <IconPlus />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{m.zoom_in()}</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="xs"
-            aria-pressed={zoom === 'fit'}
-            className="text-muted-foreground aria-pressed:bg-muted aria-pressed:text-foreground"
-            onClick={() => onZoomChange('fit')}
-          >
-            {m.zoom_fit_short()}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{m.zoom_fit()}</TooltipContent>
-      </Tooltip>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label={m.zoom_in()}
+        className="text-muted-foreground"
+        disabled={larger === undefined}
+        onClick={() => larger && onZoomChange(larger)}
+      >
+        <IconPlus />
+      </Button>
+      <Button
+        variant="ghost"
+        size="xs"
+        aria-pressed={zoom === 'fit'}
+        className="text-muted-foreground aria-pressed:bg-muted aria-pressed:text-foreground"
+        onClick={() => onZoomChange('fit')}
+      >
+        {m.zoom_fit_short()}
+      </Button>
     </div>
   )
 }
