@@ -37,6 +37,10 @@ const config = defineConfig({
                   name: 'pdf-lib',
                   test: /[\\/]node_modules[\\/](pdf-lib|@pdf-lib)[\\/]/,
                 },
+                {
+                  name: 'pdfjs',
+                  test: /[\\/]node_modules[\\/]pdfjs-dist[\\/]/,
+                },
                 { name: 'bwip-js', test: /[\\/]node_modules[\\/]bwip-js[\\/]/ },
                 { name: 'qrcode', test: /[\\/]node_modules[\\/]qrcode[\\/]/ },
                 {
