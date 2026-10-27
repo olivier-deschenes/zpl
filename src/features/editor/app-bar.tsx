@@ -35,7 +35,6 @@ import {
   addFile,
   editorStore,
   selectFile,
-  setExplain,
   setSyncZoom,
 } from './store'
 
@@ -73,7 +72,6 @@ export function AppBar({
       <FileTabs />
       <NewFileButton />
       <div className="ml-1 hidden shrink-0 items-center gap-1 border-l pl-2 xl:flex">
-        <ExplainToggle />
         <SyncZoomToggle />
         <CompareControl {...compareProps} />
       </div>
@@ -109,20 +107,6 @@ function NewFileButton() {
         {full ? m.open_file_limit({ count: MAX_PANELS }) : m.new_file()}
       </TooltipContent>
     </Tooltip>
-  )
-}
-
-function ExplainToggle() {
-  const explain = useSelector(editorStore, (state) => state.explain)
-  return (
-    <Toggle
-      variant="outline"
-      size="sm"
-      pressed={explain}
-      onPressedChange={setExplain}
-    >
-      {m.explain()}
-    </Toggle>
   )
 }
 
@@ -244,7 +228,6 @@ function CompareControl(props: CompareProps) {
 }
 
 function ViewMenu(props: CompareProps) {
-  const explain = useSelector(editorStore, (state) => state.explain)
   const syncZoom = useSelector(editorStore, (state) => state.syncZoom)
   const several = useSelector(
     editorStore,
@@ -258,12 +241,6 @@ function ViewMenu(props: CompareProps) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuCheckboxItem
-          checked={explain}
-          onCheckedChange={setExplain}
-        >
-          {m.explain()}
-        </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={syncZoom}
           disabled={!several}
