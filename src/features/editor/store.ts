@@ -22,7 +22,7 @@ export interface EditorState {
   panels: Panel[]
   /** Show plain-language notes beside the code. */
   explain: boolean
-  /** Zooming one panel's preview zooms them all. */
+  /** Zooming or scrolling one panel's preview does the same to them all. */
   syncZoom: boolean
 }
 

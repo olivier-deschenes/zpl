@@ -46,13 +46,11 @@ import type { LabelRender } from './use-label-render'
 const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4]
 const MIN_ZOOM = ZOOM_STEPS[0]
 const MAX_ZOOM = ZOOM_STEPS[ZOOM_STEPS.length - 1]
-/** How fast scrolling zooms, per pixel scrolled. */
-const SCROLL_ZOOM_RATE = 0.002
-/** Pinches arrive as small ctrl+wheel deltas, so they zoom faster. */
-const PINCH_ZOOM_RATE = 0.01
+/** How fast pinching or ⌘/Ctrl+scrolling zooms, per pixel scrolled. */
+const WHEEL_ZOOM_RATE = 0.01
 /** The most one wheel event zooms, as a power of e, so a notch can't leap. */
 const MAX_ZOOM_STEP = 0.3
-/** Marks what scrolling zooms on, and what stays under the pointer. */
+/** Marks what stays under the pointer while zooming. */
 const ZOOM_ANCHOR = '[data-zoom-anchor]'
 const VIEWPORT_PADDING = 24
 /** Between the two labels when comparing side by side. */
@@ -65,6 +63,10 @@ const COLUMN_TITLE_HEIGHT = 16 + 6
 type CompareMode = 'side-by-side' | 'difference'
 /** The panel's labels alone, or compared with another panel's. */
 type View = 'single' | CompareMode
+
+/** Hears one preview scroll, to scroll the others along while zoom is synced. */
+type ScrollListener = (source: string, left: number, top: number) => void
+const scrollListeners = new Set<ScrollListener>()
 
 /** Where the pointer was over an element, to keep it there while zooming. */
 interface ZoomAnchor {
@@ -117,6 +119,7 @@ export function LabelPreview({
 }: LabelPreviewProps) {
   const headingId = useId()
   const zoom = useSelector(zoomStore, (zooms) => zooms[panelId] ?? 'fit')
+  const syncZoom = useSelector(editorStore, (state) => state.syncZoom)
   const [viewportRef, viewport, viewportElement] =
     useElementSize<HTMLDivElement>()
   const panelIds = useSelector(
@@ -216,19 +219,9 @@ export function LabelPreview({
 
   const pinching = useRef(false)
   const onWheel = useEffectEvent((event: WheelEvent) => {
-    // A pinch zooms anywhere; scrolling only over a label, and only up and down.
-    const pinch = event.ctrlKey && !pinching.current
-    const overLabel =
-      event.target instanceof Element && event.target.closest(ZOOM_ANCHOR)
-    if (
-      !pinch &&
-      (!overLabel ||
-        event.ctrlKey ||
-        event.shiftKey ||
-        Math.abs(event.deltaX) > Math.abs(event.deltaY))
-    ) {
-      return
-    }
+    // A trackpad's scroll looks just like a mouse wheel's, so plain scrolling
+    // scrolls. Browsers report a pinch as ctrl+wheel; ⌘+wheel zooms as well.
+    if (!(event.ctrlKey || event.metaKey) || pinching.current) return
     event.preventDefault()
     const pixels =
       event.deltaY *
@@ -237,7 +230,7 @@ export function LabelPreview({
         : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
           ? viewport.height
           : 1)
-    const step = -pixels * (pinch ? PINCH_ZOOM_RATE : SCROLL_ZOOM_RATE)
+    const step = -pixels * WHEEL_ZOOM_RATE
     zoomAt(
       Math.exp(Math.min(Math.max(step, -MAX_ZOOM_STEP), MAX_ZOOM_STEP)),
       event.clientX,
@@ -282,8 +275,50 @@ export function LabelPreview({
     }
   }, [viewportElement])
 
+  // Where this pane was scrolled to by code rather than by the user, which it
+  // doesn't pass on: a pane that can't scroll as far would pull the others
+  // back.
+  const ignoredScroll = useRef<{ left: number; top: number } | null>(null)
+  const scrollTo = (left: number, top: number) => {
+    if (!viewportElement) return
+    const { scrollLeft, scrollTop } = viewportElement
+    viewportElement.scrollLeft = left
+    viewportElement.scrollTop = top
+    const moved =
+      viewportElement.scrollLeft !== scrollLeft ||
+      viewportElement.scrollTop !== scrollTop
+    ignoredScroll.current = moved
+      ? { left: viewportElement.scrollLeft, top: viewportElement.scrollTop }
+      : null
+  }
+  const onSyncedScroll = useEffectEvent(
+    (source: string, left: number, top: number) => {
+      if (source !== panelId) scrollTo(left, top)
+    },
+  )
+
+  useEffect(() => {
+    if (!viewportElement || !syncZoom) return
+    const scroll = () => {
+      const { scrollLeft: left, scrollTop: top } = viewportElement
+      const ignored = ignoredScroll.current
+      ignoredScroll.current = null
+      if (ignored?.left === left && ignored.top === top) return
+      for (const listener of scrollListeners) listener(panelId, left, top)
+    }
+    const listener: ScrollListener = (source, left, top) =>
+      onSyncedScroll(source, left, top)
+    scrollListeners.add(listener)
+    viewportElement.addEventListener('scroll', scroll, { passive: true })
+    return () => {
+      scrollListeners.delete(listener)
+      viewportElement.removeEventListener('scroll', scroll)
+    }
+  }, [viewportElement, syncZoom, panelId])
+
   // Keeps what was under the pointer there, or else what was in the middle
-  // of the pane, as labels grow and shrink.
+  // of the pane, as labels grow and shrink. Only the pane being zoomed
+  // passes its scroll on; the others follow it.
   const shownScale = useRef(scale)
   useLayoutEffect(() => {
     const previous = shownScale.current
@@ -302,11 +337,11 @@ export function LabelPreview({
       return
     }
     const ratio = scale / previous
-    const { clientWidth, clientHeight } = viewportElement
-    viewportElement.scrollLeft =
-      (viewportElement.scrollLeft + clientWidth / 2) * ratio - clientWidth / 2
-    viewportElement.scrollTop =
-      (viewportElement.scrollTop + clientHeight / 2) * ratio - clientHeight / 2
+    const { clientWidth, clientHeight, scrollLeft, scrollTop } = viewportElement
+    scrollTo(
+      (scrollLeft + clientWidth / 2) * ratio - clientWidth / 2,
+      (scrollTop + clientHeight / 2) * ratio - clientHeight / 2,
+    )
   }, [scale, viewportElement])
 
   return (
