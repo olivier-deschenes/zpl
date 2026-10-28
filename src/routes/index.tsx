@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from 'react'
 import { createFileRoute, redirect } from '@tanstack/react-router'
+import { useHotkey } from '@tanstack/react-hotkeys'
 import { useSelector } from '@tanstack/react-store'
 import { IconFolder, IconPlus } from '@tabler/icons-react'
 
@@ -20,7 +21,7 @@ import {
 } from '#/components/ui/resizable'
 import { AppBar } from '#/features/editor/app-bar'
 import type { ComparePair } from '#/features/editor/app-bar'
-import { startDiskSync } from '#/features/editor/disk-files'
+import { saveDiskFile, startDiskSync } from '#/features/editor/disk-files'
 import { OpenFromDiskButton } from '#/features/editor/disk-status'
 import { EditorPanel } from '#/features/editor/editor-panel'
 import { openShareLink } from '#/features/editor/share-link'
@@ -62,6 +63,12 @@ function EditorPage() {
       : null
 
   useEffect(startDiskSync, [])
+
+  // Edits are saved as you type; this keeps the browser from downloading
+  // the page and writes a disk file's pending edits right away.
+  useHotkey('Mod+S', () => {
+    if (activeId) void saveDiskFile(activeId)
+  })
 
   useEffect(() => {
     if (comparePair && !comparePair.every((id) => panelIds.includes(id)))

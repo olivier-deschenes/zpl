@@ -129,6 +129,20 @@ export async function reconnectDiskFile(id: string): Promise<void> {
   await connect(id, handle)
 }
 
+/**
+ * Writes a file's pending edits to disk now instead of after the debounce.
+ * A file whose permission was lost asks for it again, so call this from a
+ * user gesture such as a key press.
+ */
+export async function saveDiskFile(id: string): Promise<void> {
+  const entry = links.get(id)
+  if (entry) return entry.writer.flush()
+  const status = diskStatusStore.state[id]
+  if (status === 'permission' || status === 'error') {
+    await reconnectDiskFile(id)
+  }
+}
+
 /** Links the disk files saved in the library; call once in the browser. */
 export function startDiskSync() {
   if (started || !canOpenFromDisk()) return

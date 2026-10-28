@@ -29,6 +29,7 @@
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-devtools": "latest",
     "@tanstack/react-form": "latest",
+    "@tanstack/react-hotkeys": "^0.17.0",
     "@tanstack/react-pacer": "^0.24.1",
     "@tanstack/react-query": "latest",
     "@tanstack/react-query-devtools": "latest",
